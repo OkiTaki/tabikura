@@ -332,7 +332,7 @@ export default function App(){
       const params=new URLSearchParams(window.location.search);
       const joinParam=params.get("join");
       if(joinParam){
-        const ch=JSON.parse(atob(joinParam));
+        const ch=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(joinParam)))));
         setJoinInvite(ch);
         // URLをきれいにする
         window.history.replaceState({},"",window.location.pathname);
@@ -356,7 +356,7 @@ export default function App(){
     const ch=channels.find(c=>c.id===chId);
     if(!ch) return "";
     const data={id:ch.id,name:ch.name,color:ch.color,type:ch.type};
-    const encoded=btoa(JSON.stringify(data));
+    const encoded=encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(data)))));
     return `${window.location.origin}?join=${encoded}`;
   };
 
