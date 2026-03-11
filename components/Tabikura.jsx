@@ -360,8 +360,16 @@ export default function App(){
     loadData();
 
     // リアルタイム購読
-    const chSub=supabase.channel("channels_rt").on("postgres_changes",{event:"*",schema:"public",table:"channels"},()=>loadData()).subscribe();
-    const pSub=supabase.channel("posts_rt").on("postgres_changes",{event:"*",schema:"public",table:"posts"},()=>loadData()).subscribe();
+    const chSub=supabase.channel("channels_rt")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"channels"},()=>loadData())
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"channels"},()=>loadData())
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"channels"},()=>loadData())
+      .subscribe();
+    const pSub=supabase.channel("posts_rt")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"posts"},()=>loadData())
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"posts"},()=>loadData())
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"posts"},()=>loadData())
+      .subscribe();
 
     return()=>{ supabase.removeChannel(chSub); supabase.removeChannel(pSub); };
   },[]);
