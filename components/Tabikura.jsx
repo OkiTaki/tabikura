@@ -663,7 +663,7 @@ export default function App(){
 
       {/* ── SIDEBAR ── */}
       <div className={`sidebar${showSidebar?" open":""}`} style={{display:"flex",flexDirection:"column",height:"100%"}}>
-        <div style={{padding:"16px 14px",flex:1,overflowY:"auto",minHeight:0}}>
+        <div style={{padding:"16px 14px",flex:1,overflowY:"auto",minHeight:0,minHeight:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
             <div style={{width:32,height:32,borderRadius:10,background:"linear-gradient(135deg,#6C63FF,#F4A261)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🗺</div>
             <div style={{flex:1}}>
