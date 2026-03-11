@@ -295,11 +295,11 @@ export default function App(){
   const [channels,setChannels]=useState(EMPTY_CHANNELS);
   const [posts,setPosts]=useState(EMPTY_POSTS);
   const [activeChannel,setActiveChannel]=useState(null);
-  const [onboarding,setOnboarding]=useState(true); // 初回チュートリアル
+  const [onboarding,setOnboarding]=useState(true);
   const [onboardingStep,setOnboardingStep]=useState(0);
   const [filterCat,setFilterCat]=useState("すべて");
   const [filterDone,setFilterDone]=useState("すべて");
-  const [sortByDate,setSortByDate]=useState(true); // しおりモード用
+  const [sortByDate,setSortByDate]=useState(true);
   const [expandedPost,setExpandedPost]=useState(null);
   const [gps,setGps]=useState(null);
   const [showNewPost,setShowNewPost]=useState(false);
@@ -310,18 +310,72 @@ export default function App(){
   const [editCh,setEditCh]=useState({name:"",type:"memo",color:""});
   const [showDeleteConfirm,setShowDeleteConfirm]=useState(false);
   const [showInvite,setShowInvite]=useState(false);
-  const [inviteEmail,setInviteEmail]=useState("");
-  const [inviteTab,setInviteTab]=useState("members");
-  const [pendingInvites,setPendingInvites]=useState({ch1:[{email:"hanako@example.com",sentAt:"3日前"}],ch2:[],ch3:[]});
-  const [inviteSent,setInviteSent]=useState(false);
   const [copiedLink,setCopiedLink]=useState(false);
   const [showSidebar,setShowSidebar]=useState(false);
+  const [joinInvite,setJoinInvite]=useState(null); // 招待参加モーダル用
+  const [loaded,setLoaded]=useState(false);
 
-  useEffect(()=>{ navigator.geolocation?.getCurrentPosition(p=>setGps({lat:p.coords.latitude,lng:p.coords.longitude})); },[]);
+  // ── ローカルストレージから読み込み ──
+  useEffect(()=>{
+    try {
+      const saved=localStorage.getItem("tabikura_v1");
+      if(saved){
+        const data=JSON.parse(saved);
+        if(data.channels?.length){ setChannels(data.channels); setActiveChannel(data.channels[0].id); }
+        if(data.posts) setPosts(data.posts);
+        setOnboarding(data.onboarding!==false);
+      }
+    } catch(e){}
+
+    // URLの招待パラメータチェック
+    try {
+      const params=new URLSearchParams(window.location.search);
+      const joinParam=params.get("join");
+      if(joinParam){
+        const ch=JSON.parse(atob(joinParam));
+        setJoinInvite(ch);
+        // URLをきれいにする
+        window.history.replaceState({},"",window.location.pathname);
+      }
+    } catch(e){}
+
+    navigator.geolocation?.getCurrentPosition(p=>setGps({lat:p.coords.latitude,lng:p.coords.longitude}));
+    setLoaded(true);
+  },[]);
+
+  // ── ローカルストレージに保存 ──
+  useEffect(()=>{
+    if(!loaded) return;
+    try {
+      localStorage.setItem("tabikura_v1",JSON.stringify({channels,posts,onboarding:false}));
+    } catch(e){}
+  },[channels,posts,loaded]);
+
+  // ── 招待リンク生成 ──
+  const getInviteUrl=(chId)=>{
+    const ch=channels.find(c=>c.id===chId);
+    if(!ch) return "";
+    const data={id:ch.id,name:ch.name,color:ch.color,type:ch.type};
+    const encoded=btoa(JSON.stringify(data));
+    return `${window.location.origin}?join=${encoded}`;
+  };
+
+  // ── 招待チャネルに参加 ──
+  const acceptJoinInvite=()=>{
+    if(!joinInvite) return;
+    const exists=channels.find(c=>c.id===joinInvite.id);
+    if(!exists){
+      setChannels(prev=>[...prev,{...joinInvite,members:[ME]}]);
+      setPosts(prev=>({...prev,[joinInvite.id]:[]}));
+      setActiveChannel(joinInvite.id);
+      if(onboarding) setOnboarding(false);
+    } else {
+      setActiveChannel(joinInvite.id);
+    }
+    setJoinInvite(null);
+  };
 
   const finishOnboarding=()=>{ setOnboarding(false); };
-
-  const ch=channels.find(c=>c.id===activeChannel);
   const isItinerary=ch?.type==="itinerary";
   const allPosts=posts[activeChannel]||[];
   const doneCount=allPosts.filter(p=>p.done).length;
@@ -396,17 +450,7 @@ export default function App(){
   const saveChSettings=()=>{ setChannels(p=>p.map(c=>c.id===showChSettings?{...c,name:editCh.name||c.name,type:editCh.type,color:editCh.color}:c)); setShowChSettings(null); };
   const deleteChannel=()=>{ const remaining=channels.filter(c=>c.id!==showChSettings); setChannels(remaining); if(activeChannel===showChSettings) setActiveChannel(remaining[0]?.id||null); setShowChSettings(null); };
 
-  const sendInvite=()=>{
-    const email=inviteEmail.trim();
-    if(!email||!email.includes("@")) return;
-    setPendingInvites(p=>({...p,[activeChannel]:[...(p[activeChannel]||[]),{email,sentAt:"たった今"}]}));
-    setInviteEmail("");
-    setInviteSent(true);
-    setTimeout(()=>setInviteSent(false),3000);
-  };
-  const cancelInvite=(email)=>setPendingInvites(p=>({...p,[activeChannel]:p[activeChannel].filter(i=>i.email!==email)}));
   const removeMember=(name)=>setChannels(p=>p.map(c=>c.id===activeChannel?{...c,members:c.members.filter(x=>x!==name)}:c));
-  const copyInviteLink=()=>{ setCopiedLink(true); setTimeout(()=>setCopiedLink(false),2000); };
 
   // ── PostCardのラッパー ──
   const renderCard=(post,idx)=>(
@@ -696,78 +740,77 @@ export default function App(){
 
       {/* ── 招待モーダル ── */}
       {showInvite&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>{setShowInvite(false);setInviteTab("members");}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setShowInvite(false)}>
           <div style={{background:"white",borderRadius:24,width:"100%",maxWidth:400,boxShadow:"0 24px 60px rgba(0,0,0,0.25)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
-            <div style={{padding:"20px 22px 0"}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-                <div style={{width:36,height:36,borderRadius:12,background:"linear-gradient(135deg,#6C63FF,#F4A261)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>👥</div>
-                <div><div style={{fontWeight:900,fontSize:16,color:"#1A1A2E"}}>メンバー管理</div><div style={{fontSize:11,color:"#AAA"}}>{ch?.name}</div></div>
-                <button onClick={()=>{setShowInvite(false);setInviteTab("members");}} style={{marginLeft:"auto",background:"none",border:"none",cursor:"pointer",color:"#CCC",fontSize:22,lineHeight:1}}>×</button>
-              </div>
-              <div style={{display:"flex",gap:0,marginTop:16,borderBottom:"2px solid #F0EEE8"}}>
-                {[["members","👤 メンバー"],["invite","✉️ 招待する"]].map(([tab,label])=>(
-                  <button key={tab} onClick={()=>setInviteTab(tab)} style={{background:"none",border:"none",padding:"8px 14px",cursor:"pointer",fontSize:12,fontWeight:700,color:inviteTab===tab?"#6C63FF":"#AAA",borderBottom:inviteTab===tab?"2px solid #6C63FF":"2px solid transparent",marginBottom:-2}}>{label}</button>
-                ))}
+            <div style={{padding:"22px 22px 0"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
+                <div style={{width:36,height:36,borderRadius:12,background:"linear-gradient(135deg,#6C63FF,#F4A261)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🔗</div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:900,fontSize:16,color:"#1A1A2E"}}>招待リンク</div>
+                  <div style={{fontSize:11,color:"#AAA"}}>{ch?.name}</div>
+                </div>
+                <button onClick={()=>setShowInvite(false)} style={{background:"none",border:"none",cursor:"pointer",color:"#CCC",fontSize:22,lineHeight:1}}>×</button>
               </div>
             </div>
-            <div style={{padding:"18px 22px 22px",maxHeight:420,overflowY:"auto"}}>
-              {inviteTab==="members"&&(
-                <div>
-                  <div style={{fontSize:10,color:"#AAA",fontWeight:700,marginBottom:10,letterSpacing:1}}>参加中 {ch?.members.length}人</div>
-                  <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:18}}>
-                    {ch?.members.map((m,i)=>(
-                      <div key={m} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:"#F7F3EE",borderRadius:12}}>
-                        <div style={{width:36,height:36,borderRadius:"50%",background:MEMBER_COLORS[i%MEMBER_COLORS.length],display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:14,fontWeight:800,flexShrink:0}}>{m[0].toUpperCase()}</div>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:13,fontWeight:700,color:"#1A1A2E"}}>{m}{m===ME&&<span style={{fontSize:9,color:"#6C63FF",fontWeight:700,background:"#6C63FF18",borderRadius:10,padding:"1px 6px",marginLeft:4}}>あなた</span>}</div>
-                          <div style={{fontSize:10,color:"#AAA",marginTop:1}}>{m===ME?"オーナー · tabikura登録済み":"メンバー · tabikura登録済み"}</div>
-                        </div>
-                        {m!==ME&&<button onClick={()=>removeMember(m)} style={{background:"#FEE8E8",border:"none",borderRadius:8,padding:"5px 9px",cursor:"pointer",fontSize:10,color:"#E05",fontWeight:700}}>削除</button>}
-                      </div>
-                    ))}
-                  </div>
-                  {(pendingInvites[activeChannel]||[]).length>0&&(
-                    <div>
-                      <div style={{fontSize:10,color:"#AAA",fontWeight:700,marginBottom:10,letterSpacing:1}}>招待済み（未登録）</div>
-                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        {(pendingInvites[activeChannel]||[]).map(inv=>(
-                          <div key={inv.email} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:"#FFF8EE",borderRadius:12,border:"1px dashed #F4A26155"}}>
-                            <div style={{width:36,height:36,borderRadius:"50%",background:"#F4A26133",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>✉️</div>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:12,fontWeight:700,color:"#1A1A2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inv.email}</div>
-                              <div style={{fontSize:10,color:"#F4A261",marginTop:1}}>招待メール送信済み · {inv.sentAt}</div>
-                            </div>
-                            <button onClick={()=>cancelInvite(inv.email)} style={{background:"none",border:"none",cursor:"pointer",color:"#CCC",fontSize:14,padding:"0 4px"}}>×</button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <button onClick={()=>setInviteTab("invite")} style={{width:"100%",background:"#6C63FF",color:"white",border:"none",borderRadius:12,padding:"12px",cursor:"pointer",fontWeight:700,fontSize:13,marginTop:18,boxShadow:"0 4px 12px #6C63FF33"}}>＋ 新しいメンバーを招待</button>
+            <div style={{padding:"0 22px 24px"}}>
+              <div style={{fontSize:12,color:"#555",lineHeight:1.7,marginBottom:16}}>
+                このリンクを友だちに送ると、相手のTabikuraに「<strong>{ch?.name}</strong>」が追加されます。
+              </div>
+
+              {/* リンク表示 */}
+              <div style={{background:"#F7F3EE",borderRadius:14,padding:"12px 14px",marginBottom:10}}>
+                <div style={{fontSize:10,color:"#AAA",fontWeight:700,marginBottom:6,letterSpacing:1}}>招待リンク</div>
+                <div style={{fontSize:11,color:"#555",wordBreak:"break-all",lineHeight:1.5,marginBottom:10}}>
+                  {activeChannel?getInviteUrl(activeChannel):""}
                 </div>
-              )}
-              {inviteTab==="invite"&&(
-                <div>
-                  {inviteSent&&<div style={{background:"#E8F8F2",borderRadius:12,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>✅</span><span style={{fontSize:12,color:"#2A9D8F",fontWeight:700}}>招待メールを送信しました！</span></div>}
-                  <div style={{marginBottom:20}}>
-                    <div style={{fontSize:11,color:"#555",fontWeight:700,marginBottom:8}}>メールアドレスで招待</div>
-                    <div style={{fontSize:11,color:"#AAA",marginBottom:12,lineHeight:1.6}}>入力したアドレスに招待メールが届きます。受け取った人はTabikuraに登録後、このチャネルに自動で参加できます。</div>
-                    <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.nativeEvent.isComposing&&sendInvite()} placeholder="friend@example.com" type="email" autoFocus style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:12,padding:"11px 14px",fontSize:13,outline:"none",marginBottom:8}}/>
-                    <button onClick={sendInvite} style={{width:"100%",background:inviteEmail.includes("@")?"#6C63FF":"#DDD",color:"white",border:"none",borderRadius:12,padding:"12px",cursor:inviteEmail.includes("@")?"pointer":"default",fontWeight:700,fontSize:13}}>✉️ 招待メールを送る</button>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
-                    <div style={{flex:1,height:1,background:"#EEE"}}/><span style={{fontSize:10,color:"#BBB",fontWeight:600}}>または</span><div style={{flex:1,height:1,background:"#EEE"}}/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,color:"#555",fontWeight:700,marginBottom:8}}>招待リンクをシェア</div>
-                    <div style={{background:"#F7F3EE",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                      <div style={{flex:1,fontSize:11,color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>https://tabikura.app/join/{(activeChannel||"").slice(-4)}?ref=invite</div>
-                      <button onClick={copyInviteLink} style={{background:copiedLink?"#2A9D8F":"#6C63FF",color:"white",border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:10,fontWeight:700,flexShrink:0}}>{copiedLink?"✓ コピー済み":"コピー"}</button>
+                <button onClick={()=>{
+                  const url=getInviteUrl(activeChannel);
+                  if(navigator.share){
+                    navigator.share({title:`Tabikura: ${ch?.name}`,text:`「${ch?.name}」に招待されました！`,url});
+                  } else {
+                    navigator.clipboard?.writeText(url).then(()=>{setCopiedLink(true);setTimeout(()=>setCopiedLink(false),2000);});
+                  }
+                }} style={{width:"100%",background:copiedLink?"#2A9D8F":"#6C63FF",color:"white",border:"none",borderRadius:10,padding:"12px",cursor:"pointer",fontWeight:700,fontSize:13,transition:"background 0.2s"}}>
+                  {copiedLink?"✓ コピーしました！":navigator.share?"📤 シェアする":"📋 リンクをコピー"}
+                </button>
+              </div>
+
+              {/* メンバー一覧 */}
+              <div style={{marginTop:16}}>
+                <div style={{fontSize:10,color:"#AAA",fontWeight:700,marginBottom:8,letterSpacing:1}}>参加中 {ch?.members.length}人</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {ch?.members.map((m,i)=>(
+                    <div key={m} style={{display:"flex",alignItems:"center",gap:6,background:"#F7F3EE",borderRadius:20,padding:"5px 10px 5px 5px"}}>
+                      <div style={{width:24,height:24,borderRadius:"50%",background:MEMBER_COLORS[i%MEMBER_COLORS.length],display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:10,fontWeight:800}}>{m[0].toUpperCase()}</div>
+                      <div style={{fontSize:11,fontWeight:700,color:"#1A1A2E"}}>{m}{m===ME&&<span style={{fontSize:9,color:"#6C63FF",marginLeft:3}}>あなた</span>}</div>
+                      {m!==ME&&<button onClick={()=>removeMember(m)} style={{background:"none",border:"none",cursor:"pointer",color:"#CCC",fontSize:12,padding:"0 2px",lineHeight:1}}>×</button>}
                     </div>
-                    <div style={{fontSize:10,color:"#AAA",lineHeight:1.6}}>⚠️ このリンクを知っている人は誰でも参加できます。リンクは7日間有効です。</div>
-                  </div>
+                  ))}
                 </div>
-              )}
+              </div>
+              <div style={{fontSize:10,color:"#BBB",marginTop:12,lineHeight:1.6}}>⚠️ このリンクを知っている人は誰でも参加できます。</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 招待参加モーダル ── */}
+      {joinInvite&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:3000,padding:20}}>
+          <div style={{background:"white",borderRadius:24,width:"100%",maxWidth:360,padding:28,boxShadow:"0 24px 60px rgba(0,0,0,0.3)",textAlign:"center"}}>
+            <div style={{width:64,height:64,borderRadius:20,background:"linear-gradient(135deg,#6C63FF,#F4A261)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,margin:"0 auto 16px"}}>🗺</div>
+            <div style={{fontWeight:900,fontSize:18,color:"#1A1A2E",marginBottom:8}}>チャネルへの招待</div>
+            <div style={{fontSize:13,color:"#666",lineHeight:1.7,marginBottom:6}}>以下のチャネルに招待されました</div>
+            <div style={{background:"#F7F3EE",borderRadius:14,padding:"12px 16px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:joinInvite.color,flexShrink:0}}/>
+              <div style={{fontWeight:900,fontSize:15,color:"#1A1A2E"}}>{joinInvite.name}</div>
+              <span style={{background:joinInvite.type==="itinerary"?"#6C63FF12":"#F4A26120",color:joinInvite.type==="itinerary"?"#6C63FF":"#F4A261",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700,marginLeft:"auto"}}>
+                {CH_TYPES[joinInvite.type||"memo"].icon} {CH_TYPES[joinInvite.type||"memo"].label}
+              </span>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setJoinInvite(null)} style={{flex:1,background:"#F0EEE8",border:"none",borderRadius:14,padding:"13px",cursor:"pointer",fontWeight:700,fontSize:13,color:"#888"}}>キャンセル</button>
+              <button onClick={acceptJoinInvite} style={{flex:2,background:"linear-gradient(135deg,#6C63FF,#7C73FF)",border:"none",borderRadius:14,padding:"13px",cursor:"pointer",fontWeight:900,fontSize:14,color:"white",boxShadow:"0 4px 20px #6C63FF44"}}>参加する！</button>
             </div>
           </div>
         </div>
