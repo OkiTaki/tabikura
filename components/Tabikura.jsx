@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useEffect, useRef } from "react";
 
 // ── 定数 ──────────────────────────────────────────────────────
@@ -16,39 +14,29 @@ const CH_TYPES = {
   itinerary: { label: "計画・しおり",   icon: "🗓", desc: "日程と時間を決めて旅のしおりを作成" },
 };
 
-// ── 初期データ ─────────────────────────────────────────────────
-const INITIAL_CHANNELS = [
+// ── 初期データ（空） ───────────────────────────────────────────
+const EMPTY_CHANNELS = [];
+const EMPTY_POSTS = {};
+
+// ── チュートリアル用サンプルデータ ────────────────────────────
+const DEMO_CHANNELS = [
   { id:"ch1", name:"🗾 東北旅行 2025夏",  members:["あなた","みく","たろう"],          color:"#E8A87C", type:"itinerary" },
   { id:"ch2", name:"🗼 東京デート",        members:["あなた","みく"],                   color:"#7CB9E8", type:"memo" },
-  { id:"ch3", name:"🌊 沖縄計画",          members:["あなた","たろう","さくら","けん"], color:"#7CE8B0", type:"itinerary" },
 ];
-
-const INITIAL_POSTS = {
+const DEMO_POSTS = {
   ch1: [
-    { id:"p1", author:"みく",   avatar:"M", avatarColor:"#F4A261", title:"鳴子温泉 西多賀旅館",   category:"宿泊", done:false,
-      planDate:"2025-08-02", planTime:"15:00",
-      hours:"IN 15:00 / OUT 10:00", closed:"不定休",
-      reactions:{"❤️":["あなた","たろう"],"✈️":["あなた"],"🔥":["たろう"]},
-      comments:[{id:"c1",author:"たろう",avatar:"T",avatarColor:"#2A9D8F",text:"露天風呂あるの？！行きたい！",time:"2時間前"},{id:"c2",author:"あなた",avatar:"A",avatarColor:"#6C63FF",text:"あるよ〜！最高らしい✨",time:"1時間前"}], time:"昨日" },
-    { id:"p2", author:"たろう", avatar:"T", avatarColor:"#2A9D8F", title:"こけし工房 絵付け体験",  category:"体験", done:true,
-      planDate:"2025-08-03", planTime:"10:00",
-      hours:"10:00〜16:00", closed:"水曜定休",
-      reactions:{"🎨":["みく"],"😆":["みく"]},
-      comments:[], time:"3日前" },
-    { id:"p3", author:"あなた", avatar:"A", avatarColor:"#6C63FF", title:"陸羽東線 車窓の旅",     category:"観光", done:false,
-      planDate:"2025-08-03", planTime:"13:30",
-      hours:"時刻表に準ずる", closed:"無休",
-      reactions:{"🚂":["みく","たろう"],"😮":["みく"]},
-      comments:[{id:"c3",author:"みく",avatar:"M",avatarColor:"#F4A261",text:"秘境駅に止まるやつ？！",time:"5時間前"}], time:"今日" },
+    { id:"p1", author:"みく", avatar:"M", avatarColor:"#F4A261", title:"鳴子温泉 西多賀旅館", category:"宿泊", done:false,
+      planDate:"2025-08-02", planTime:"15:00", hours:"IN 15:00 / OUT 10:00", closed:"不定休",
+      reactions:{"❤️":["あなた","たろう"],"✈️":["あなた"]}, comments:[{id:"c1",author:"たろう",avatar:"T",avatarColor:"#2A9D8F",text:"露天風呂あるの？！行きたい！",time:"2時間前"}], time:"昨日" },
+    { id:"p2", author:"たろう", avatar:"T", avatarColor:"#2A9D8F", title:"こけし工房 絵付け体験", category:"体験", done:true,
+      planDate:"2025-08-03", planTime:"10:00", hours:"10:00〜16:00", closed:"水曜定休",
+      reactions:{"🎨":["みく"]}, comments:[], time:"3日前" },
   ],
   ch2: [
     { id:"p4", author:"あなた", avatar:"A", avatarColor:"#6C63FF", title:"猿田彦珈琲 渋谷店", category:"カフェ", done:false,
-      planDate:null, planTime:null,
-      hours:"8:00〜22:00", closed:"無休",
-      reactions:{"❤️":["みく"],"☕":["みく"]},
-      comments:[{id:"c4",author:"みく",avatar:"M",avatarColor:"#F4A261",text:"ここずっと行ってみたかった☕",time:"30分前"}], time:"今日" },
+      planDate:null, planTime:null, hours:"8:00〜22:00", closed:"無休",
+      reactions:{"❤️":["みく"],"☕":["みく"]}, comments:[], time:"今日" },
   ],
-  ch3: [],
 };
 
 // ── ユーティリティ ────────────────────────────────────────────
@@ -302,9 +290,11 @@ function DateGroupHeader({dateStr, posts}){
 
 // ── App ───────────────────────────────────────────────────────
 export default function App(){
-  const [channels,setChannels]=useState(INITIAL_CHANNELS);
-  const [posts,setPosts]=useState(INITIAL_POSTS);
-  const [activeChannel,setActiveChannel]=useState("ch1");
+  const [channels,setChannels]=useState(EMPTY_CHANNELS);
+  const [posts,setPosts]=useState(EMPTY_POSTS);
+  const [activeChannel,setActiveChannel]=useState(null);
+  const [onboarding,setOnboarding]=useState(true); // 初回チュートリアル
+  const [onboardingStep,setOnboardingStep]=useState(0);
   const [filterCat,setFilterCat]=useState("すべて");
   const [filterDone,setFilterDone]=useState("すべて");
   const [sortByDate,setSortByDate]=useState(true); // しおりモード用
@@ -323,8 +313,11 @@ export default function App(){
   const [pendingInvites,setPendingInvites]=useState({ch1:[{email:"hanako@example.com",sentAt:"3日前"}],ch2:[],ch3:[]});
   const [inviteSent,setInviteSent]=useState(false);
   const [copiedLink,setCopiedLink]=useState(false);
+  const [showSidebar,setShowSidebar]=useState(false);
 
   useEffect(()=>{ navigator.geolocation?.getCurrentPosition(p=>setGps({lat:p.coords.latitude,lng:p.coords.longitude})); },[]);
+
+  const finishOnboarding=()=>{ setOnboarding(false); };
 
   const ch=channels.find(c=>c.id===activeChannel);
   const isItinerary=ch?.type==="itinerary";
@@ -424,19 +417,88 @@ export default function App(){
       isItinerary={isItinerary}/>
   );
 
-  return(
-    <div style={{display:"flex",height:"100vh",background:"#F7F3EE",fontFamily:"'Hiragino Sans','Noto Sans JP',sans-serif",overflow:"hidden"}}>
-      <style>{`*{box-sizing:border-box;margin:0;padding:0;}::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}button,input{font-family:inherit;}`}</style>
+  // ── オンボーディング画面 ──
+  const STEPS = [
+    { icon:"🗺", title:"Tabikuraへようこそ！", desc:"行きたい場所ややりたいことを\n友だちと一緒にまとめられるアプリです。" },
+    { icon:"💬", title:"チャネルで旅行ごとに整理", desc:"「東北旅行」「東京デート」など\n旅行グループごとにチャネルを作れます。" },
+    { icon:"🗓", title:"しおりモードで日程管理", desc:"計画・しおりモードなら日付と時間を\n設定して時系列で並べられます。" },
+    { icon:"🗺", title:"Googleマップ連携", desc:"各スポットの「Googleマップ」ボタンで\nすぐに地図を開けます。" },
+  ];
+
+  if(onboarding) return(
+    <div style={{height:"100vh",background:"#18172B",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Hiragino Sans','Noto Sans JP',sans-serif",padding:24}}>
+      <style>{`*{box-sizing:border-box;margin:0;padding:0;}button{font-family:inherit;}`}</style>
+
+      {/* ロゴ */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:40}}>
+        <div style={{width:48,height:48,borderRadius:16,background:"linear-gradient(135deg,#6C63FF,#F4A261)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>🗺</div>
+        <div>
+          <div style={{color:"white",fontWeight:900,fontSize:24}}>Tabikura</div>
+          <div style={{color:"#6660A0",fontSize:12}}>行きたいをまとめよう</div>
+        </div>
+      </div>
+
+      {/* ステップカード */}
+      <div style={{background:"#22203A",borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:360,marginBottom:28,minHeight:160,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center"}}>
+        <div style={{fontSize:52,marginBottom:14}}>{STEPS[onboardingStep].icon}</div>
+        <div style={{color:"white",fontWeight:900,fontSize:18,marginBottom:10}}>{STEPS[onboardingStep].title}</div>
+        <div style={{color:"#8884AA",fontSize:13,lineHeight:1.7,whiteSpace:"pre-line"}}>{STEPS[onboardingStep].desc}</div>
+      </div>
+
+      {/* ドット */}
+      <div style={{display:"flex",gap:6,marginBottom:28}}>
+        {STEPS.map((_,i)=>(
+          <div key={i} style={{width:i===onboardingStep?20:6,height:6,borderRadius:3,background:i===onboardingStep?"#6C63FF":"#2A2940",transition:"width 0.2s"}}/>
+        ))}
+      </div>
+
+      {/* ボタン */}
+      {onboardingStep < STEPS.length-1 ? (
+        <div style={{display:"flex",gap:10,width:"100%",maxWidth:360}}>
+          <button onClick={finishOnboarding} style={{flex:1,background:"transparent",border:"1px solid #2A2940",borderRadius:14,padding:"13px",color:"#6660A0",cursor:"pointer",fontWeight:600,fontSize:13}}>スキップ</button>
+          <button onClick={()=>setOnboardingStep(s=>s+1)} style={{flex:2,background:"#6C63FF",border:"none",borderRadius:14,padding:"13px",color:"white",cursor:"pointer",fontWeight:700,fontSize:14,boxShadow:"0 4px 20px #6C63FF44"}}>次へ →</button>
+        </div>
+      ):(
+        <button onClick={finishOnboarding} style={{width:"100%",maxWidth:360,background:"linear-gradient(135deg,#6C63FF,#F4A261)",border:"none",borderRadius:14,padding:"15px",color:"white",cursor:"pointer",fontWeight:900,fontSize:15,boxShadow:"0 4px 20px #6C63FF44"}}>
+          🎉 はじめる！
+        </button>
+      )}
+    </div>
+  );fontFamily:"'Hiragino Sans','Noto Sans JP',sans-serif",overflow:"hidden"}}>
+      <style>{`
+        *{box-sizing:border-box;margin:0;padding:0;}
+        ::-webkit-scrollbar{width:3px;}
+        ::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
+        button,input{font-family:inherit;}
+        .sidebar{width:220px;background:#18172B;display:flex;flex-direction:column;flex-shrink:0;transition:transform 0.25s ease;}
+        .sidebar-overlay{display:none;}
+        @media(min-width:641px){
+          .hamburger{display:none !important;}
+        }
+        @media(max-width:640px){
+          .sidebar{position:fixed;top:0;left:0;height:100vh;z-index:500;transform:translateX(-100%);}
+          .sidebar.open{transform:translateX(0);}
+          .sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:499;}
+          .header-badge{display:none;}
+          .header-members{display:none;}
+          .progress-bar{display:none;}
+        }
+      `}</style>
+
+      {/* モバイル時のオーバーレイ */}
+      {showSidebar&&<div className="sidebar-overlay" onClick={()=>setShowSidebar(false)}/>}
 
       {/* ── SIDEBAR ── */}
-      <div style={{width:220,background:"#18172B",display:"flex",flexDirection:"column",flexShrink:0}}>
+      <div className={`sidebar${showSidebar?" open":""}`}>
         <div style={{padding:"16px 14px",flex:1,overflowY:"auto"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
             <div style={{width:32,height:32,borderRadius:10,background:"linear-gradient(135deg,#6C63FF,#F4A261)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🗺</div>
-            <div>
+            <div style={{flex:1}}>
               <div style={{color:"white",fontWeight:900,fontSize:14}}>Tabikura</div>
               <div style={{color:"#6660A0",fontSize:9}}>行きたいをまとめよう</div>
             </div>
+            {/* モバイル閉じるボタン */}
+            <button onClick={()=>setShowSidebar(false)} style={{background:"none",border:"none",color:"#4A4870",fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>×</button>
           </div>
           <div style={{background:"#22203A",borderRadius:8,padding:"5px 10px",marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
             <div style={{width:6,height:6,borderRadius:"50%",background:gps?"#2A9D8F":"#555"}}/>
@@ -445,7 +507,7 @@ export default function App(){
           <div style={{color:"#4A4870",fontSize:9,fontWeight:700,letterSpacing:1.5,marginBottom:6}}>CHANNELS</div>
           {channels.map(c=>(
             <div key={c.id} style={{position:"relative",marginBottom:2}} className="ch-row">
-              <button onClick={()=>setActiveChannel(c.id)} style={{width:"100%",background:activeChannel===c.id?"#2A2940":"transparent",border:"none",borderRadius:8,padding:"7px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:8,textAlign:"left",paddingRight:28}}>
+              <button onClick={()=>{setActiveChannel(c.id);setShowSidebar(false);}} style={{width:"100%",background:activeChannel===c.id?"#2A2940":"transparent",border:"none",borderRadius:8,padding:"7px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:8,textAlign:"left",paddingRight:28}}>
                 <div style={{width:6,height:6,borderRadius:"50%",background:c.color,flexShrink:0}}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{color:activeChannel===c.id?"white":"#8884AA",fontSize:11,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
@@ -491,25 +553,28 @@ export default function App(){
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
         {/* ヘッダー */}
-        <div style={{background:"white",borderBottom:"1px solid #EDE8E0",padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
-          <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <div style={{fontWeight:900,fontSize:16,color:"#1A1A2E"}}>{ch?.name}</div>
-              {/* タイプバッジ */}
-              <span style={{background:isItinerary?"#6C63FF12":"#F4A26120",color:isItinerary?"#6C63FF":"#F4A261",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>
+        <div style={{background:"white",borderBottom:"1px solid #EDE8E0",padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
+          {/* ハンバーガー（モバイルのみ表示） */}
+          <button onClick={()=>setShowSidebar(true)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px 6px",borderRadius:8,color:"#555",fontSize:20,lineHeight:1,flexShrink:0}} className="hamburger">
+            ☰
+          </button>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+              <div style={{fontWeight:900,fontSize:15,color:"#1A1A2E",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} className="header-title">{ch?.name}</div>
+              <span style={{background:isItinerary?"#6C63FF12":"#F4A26120",color:isItinerary?"#6C63FF":"#F4A261",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}} className="header-badge">
                 {ch&&CH_TYPES[ch.type||"memo"].icon} {ch&&CH_TYPES[ch.type||"memo"].label}
               </span>
             </div>
-            <div style={{fontSize:10,color:"#AAA",marginTop:2}}>{ch?.members.join(" · ")} · {doneCount}/{allPosts.length} 完了</div>
+            <div style={{fontSize:10,color:"#AAA",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} className="header-members">{ch?.members.join(" · ")} · {doneCount}/{allPosts.length} 完了</div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}} className="progress-bar">
             <div style={{fontSize:11,color:"#2A9D8F",fontWeight:700}}>{allPosts.length?Math.round(doneCount/allPosts.length*100):0}%</div>
-            <div style={{width:50,height:4,background:"#EEE",borderRadius:3,overflow:"hidden"}}>
+            <div style={{width:40,height:4,background:"#EEE",borderRadius:3,overflow:"hidden"}}>
               <div style={{width:`${allPosts.length?doneCount/allPosts.length*100:0}%`,height:"100%",background:"#2A9D8F",borderRadius:3}}/>
             </div>
           </div>
-          <button onClick={()=>setShowInvite(true)} style={{background:"#F5F0E8",color:"#555",border:"none",borderRadius:10,padding:"8px 12px",cursor:"pointer",fontWeight:700,fontSize:12}}>👤＋ 招待</button>
-          <button onClick={()=>setShowNewPost(true)} style={{background:"#6C63FF",color:"white",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:12,boxShadow:"0 4px 12px #6C63FF44"}}>＋ 追加</button>
+          <button onClick={()=>setShowInvite(true)} style={{background:"#F5F0E8",color:"#555",border:"none",borderRadius:10,padding:"7px 10px",cursor:"pointer",fontWeight:700,fontSize:11,flexShrink:0}}>👤＋</button>
+          <button onClick={()=>setShowNewPost(true)} style={{background:"#6C63FF",color:"white",border:"none",borderRadius:10,padding:"7px 12px",cursor:"pointer",fontWeight:700,fontSize:12,boxShadow:"0 4px 12px #6C63FF44",flexShrink:0}}>＋ 追加</button>
         </div>
 
         {/* フィルターバー */}
@@ -534,7 +599,14 @@ export default function App(){
 
         {/* 投稿リスト */}
         <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
-          {filtered.length===0?(
+          {!activeChannel?(
+            <div style={{textAlign:"center",padding:"80px 20px",color:"#CCC"}}>
+              <div style={{fontSize:56,marginBottom:12}}>🗺</div>
+              <div style={{fontWeight:700,fontSize:16,marginBottom:6,color:"#AAA"}}>チャネルを作ってはじめよう</div>
+              <div style={{fontSize:12,marginBottom:20}}>左のメニューから「＋ 新しいチャネル」をタップ</div>
+              <button onClick={()=>{setShowSidebar(true);setShowNewCh(true);}} style={{background:"#6C63FF",color:"white",border:"none",borderRadius:14,padding:"12px 24px",cursor:"pointer",fontWeight:700,fontSize:13,boxShadow:"0 4px 16px #6C63FF44"}}>＋ 最初のチャネルを作る</button>
+            </div>
+          ) : filtered.length===0?(
             <div style={{textAlign:"center",padding:"60px 20px",color:"#CCC"}}>
               <div style={{fontSize:48,marginBottom:10}}>{isItinerary?"🗓":"💬"}</div>
               <div style={{fontWeight:700,fontSize:14,marginBottom:4,color:"#AAA"}}>まだ投稿がありません</div>
@@ -553,8 +625,7 @@ export default function App(){
             ))
           ) : (
             filtered.map((post,idx)=>renderCard(post,idx))
-          )}
-        </div>
+          )}        </div>
       </div>
 
       {/* ── 新規投稿モーダル ── */}
