@@ -464,7 +464,10 @@ export default function App(){
         </button>
       )}
     </div>
-  );fontFamily:"'Hiragino Sans','Noto Sans JP',sans-serif",overflow:"hidden"}}>
+  );
+
+  return(
+    <div style={{display:"flex",height:"100vh",background:"#F7F3EE",fontFamily:"'Hiragino Sans','Noto Sans JP',sans-serif",overflow:"hidden"}}>
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0;}
         ::-webkit-scrollbar{width:3px;}
