@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 const EMOJI_CANDIDATES = ["👍","🎉","🍜","☕","🏖","🌸","🍣","🍺","🎨","🗻","🌊","⛩","🍡","🦀","🎭","🌺","🚂","🦋","🍰","🎶","💯","🤩","😍","🥳","🌈","🎯"];
 const CATEGORIES = ["すべて","グルメ","カフェ","宿泊","体験","観光","ショッピング"];
 const CAT_EMOJI = { グルメ:"🍜", カフェ:"☕", 宿泊:"🏨", 体験:"🎨", 観光:"🗺", ショッピング:"🛍" };
-const ME = "あなた", MY_AVT = "A", MY_CLR = "#6C63FF";
+const MY_CLR = "#6C63FF";
 const CH_COLORS = ["#E8A87C","#7CB9E8","#7CE8B0","#E87CB9","#C8E87C"];
 const MEMBER_COLORS = ["#6C63FF","#F4A261","#2A9D8F","#E87CB9","#C8E87C","#7CB9E8"];
 
@@ -298,6 +298,8 @@ export default function App(){
   const [activeChannel,setActiveChannel]=useState(null);
   const [onboarding,setOnboarding]=useState(true);
   const [onboardingStep,setOnboardingStep]=useState(0);
+  const [nickname,setNickname]=useState("");
+  const [nicknameInput,setNicknameInput]=useState("");
   const [filterCat,setFilterCat]=useState("すべて");
   const [filterDone,setFilterDone]=useState("すべて");
   const [sortByDate,setSortByDate]=useState(true);
@@ -330,6 +332,10 @@ export default function App(){
     } catch(e){}
 
     navigator.geolocation?.getCurrentPosition(p=>setGps({lat:p.coords.latitude,lng:p.coords.longitude}));
+
+    // ニックネームをlocalStorageから読み込み
+    const savedNick=localStorage.getItem("tabikura_nickname");
+    if(savedNick) setNickname(savedNick);
 
     // 初回データ読み込み
     const loadData=async()=>{
@@ -385,8 +391,20 @@ export default function App(){
 
   const finishOnboarding=()=>{ setOnboarding(false); };
 
+  // ニックネーム確定
+  const confirmNickname=()=>{
+    const name=nicknameInput.trim();
+    if(!name) return;
+    setNickname(name);
+    localStorage.setItem("tabikura_nickname",name);
+    setOnboarding(false);
+  };
+
   // SSR対策：ローカルストレージ読み込み前は何も表示しない
   if(!loaded) return null;
+
+  const ME=nickname||"あなた";
+  const MY_AVT=ME[0].toUpperCase();
 
   const ch=channels.find(c=>c.id===activeChannel);
   const isItinerary=ch?.type==="itinerary";
@@ -562,12 +580,12 @@ export default function App(){
     { icon:"🗺", title:"Tabikuraへようこそ！", desc:"行きたい場所ややりたいことを\n友だちと一緒にまとめられるアプリです。" },
     { icon:"💬", title:"チャネルで旅行ごとに整理", desc:"「東北旅行」「東京デート」など\n旅行グループごとにチャネルを作れます。" },
     { icon:"🗓", title:"しおりモードで日程管理", desc:"計画・しおりモードなら日付と時間を\n設定して時系列で並べられます。" },
-    { icon:"🗺", title:"Googleマップ連携", desc:"各スポットの「Googleマップ」ボタンで\nすぐに地図を開けます。" },
+    { icon:"👤", title:"ニックネームを設定", desc:"投稿に表示される名前を\n設定しましょう！" },
   ];
 
   if(onboarding) return(
     <div style={{height:"100vh",background:"#18172B",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Hiragino Sans','Noto Sans JP',sans-serif",padding:24}}>
-      <style>{`*{box-sizing:border-box;margin:0;padding:0;}button{font-family:inherit;}`}</style>
+      <style>{`*{box-sizing:border-box;margin:0;padding:0;}button,input{font-family:inherit;}`}</style>
 
       {/* ロゴ */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:40}}>
@@ -583,6 +601,18 @@ export default function App(){
         <div style={{fontSize:52,marginBottom:14}}>{STEPS[onboardingStep].icon}</div>
         <div style={{color:"white",fontWeight:900,fontSize:18,marginBottom:10}}>{STEPS[onboardingStep].title}</div>
         <div style={{color:"#8884AA",fontSize:13,lineHeight:1.7,whiteSpace:"pre-line"}}>{STEPS[onboardingStep].desc}</div>
+        {/* ニックネーム入力（最後のステップ） */}
+        {onboardingStep===STEPS.length-1&&(
+          <input
+            value={nicknameInput}
+            onChange={e=>setNicknameInput(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&!e.nativeEvent.isComposing&&confirmNickname()}
+            placeholder="例：たろう、Miku..."
+            autoFocus
+            maxLength={12}
+            style={{marginTop:16,width:"100%",background:"#18172B",border:"2px solid #6C63FF55",borderRadius:12,padding:"12px 14px",color:"white",fontSize:15,outline:"none",textAlign:"center"}}
+          />
+        )}
       </div>
 
       {/* ドット */}
@@ -595,11 +625,11 @@ export default function App(){
       {/* ボタン */}
       {onboardingStep < STEPS.length-1 ? (
         <div style={{display:"flex",gap:10,width:"100%",maxWidth:360}}>
-          <button onClick={finishOnboarding} style={{flex:1,background:"transparent",border:"1px solid #2A2940",borderRadius:14,padding:"13px",color:"#6660A0",cursor:"pointer",fontWeight:600,fontSize:13}}>スキップ</button>
+          <button onClick={()=>setOnboardingStep(STEPS.length-1)} style={{flex:1,background:"transparent",border:"1px solid #2A2940",borderRadius:14,padding:"13px",color:"#6660A0",cursor:"pointer",fontWeight:600,fontSize:13}}>スキップ</button>
           <button onClick={()=>setOnboardingStep(s=>s+1)} style={{flex:2,background:"#6C63FF",border:"none",borderRadius:14,padding:"13px",color:"white",cursor:"pointer",fontWeight:700,fontSize:14,boxShadow:"0 4px 20px #6C63FF44"}}>次へ →</button>
         </div>
       ):(
-        <button onClick={finishOnboarding} style={{width:"100%",maxWidth:360,background:"linear-gradient(135deg,#6C63FF,#F4A261)",border:"none",borderRadius:14,padding:"15px",color:"white",cursor:"pointer",fontWeight:900,fontSize:15,boxShadow:"0 4px 20px #6C63FF44"}}>
+        <button onClick={confirmNickname} disabled={!nicknameInput.trim()} style={{width:"100%",maxWidth:360,background:nicknameInput.trim()?"linear-gradient(135deg,#6C63FF,#F4A261)":"#2A2940",border:"none",borderRadius:14,padding:"15px",color:nicknameInput.trim()?"white":"#4A4870",cursor:nicknameInput.trim()?"pointer":"default",fontWeight:900,fontSize:15,boxShadow:nicknameInput.trim()?"0 4px 20px #6C63FF44":"none",transition:"all 0.2s"}}>
           🎉 はじめる！
         </button>
       )}
@@ -688,7 +718,11 @@ export default function App(){
         </div>
         <div style={{padding:"10px 14px",borderTop:"1px solid #22203A",display:"flex",alignItems:"center",gap:8}}>
           <Avt i={MY_AVT} c={MY_CLR} s={26}/>
-          <div><div style={{color:"white",fontSize:11,fontWeight:700}}>{ME}</div><div style={{color:"#4A4870",fontSize:9}}>オーナー</div></div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:"white",fontSize:11,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ME}</div>
+            <div style={{color:"#4A4870",fontSize:9}}>オーナー</div>
+          </div>
+          <button onClick={()=>{const n=prompt("ニックネームを変更",ME);if(n?.trim()){setNickname(n.trim());localStorage.setItem("tabikura_nickname",n.trim());}}} style={{background:"none",border:"none",cursor:"pointer",color:"#4A4870",fontSize:11,padding:"3px 5px",borderRadius:6}}>✏️</button>
         </div>
       </div>
 
