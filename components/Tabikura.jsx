@@ -342,9 +342,10 @@ export default function App(){
       const {data:chs}=await supabase.from("channels").select("*").order("created_at");
       const {data:ps}=await supabase.from("posts").select("*").order("created_at");
       if(chs?.length){
-        const myName=localStorage.getItem("tabikura_nickname")||"あなた"; const chList=chs.filter(c=>(c.members||[]).includes(myName)).map(c=>({id:c.id,name:c.name,color:c.color,type:c.type,members:c.members||[]}));
+        const chList=chs.map(c=>({id:c.id,name:c.name,color:c.color,type:c.type,members:c.members||[ME]}));
         setChannels(chList);
-        if(chList.length){ setActiveChannel(chList[0].id); setOnboarding(false); }
+        setActiveChannel(chList[0].id);
+        setOnboarding(false);
       }
       if(ps?.length){
         const postMap={};
@@ -662,7 +663,7 @@ export default function App(){
 
       {/* ── SIDEBAR ── */}
       <div className={`sidebar${showSidebar?" open":""}`} style={{display:"flex",flexDirection:"column",height:"100%"}}>
-        <div style={{padding:"16px 14px",flex:1,overflowY:"auto",minHeight:0,minHeight:0}}>
+        <div style={{padding:"16px 14px",flex:1,overflowY:"auto",minHeight:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
             <div style={{width:32,height:32,borderRadius:10,background:"linear-gradient(135deg,#6C63FF,#F4A261)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🗺</div>
             <div style={{flex:1}}>
@@ -987,6 +988,37 @@ export default function App(){
                       {["#E8A87C","#7CB9E8","#7CE8B0","#E87CB9","#C8E87C","#F4A261","#6C63FF","#2A9D8F","#E84040","#F4D261"].map(col=>(
                         <button key={col} onClick={()=>setEditCh(p=>({...p,color:col}))} style={{width:28,height:28,borderRadius:"50%",background:col,border:editCh.color===col?"3px solid #1A1A2E":"3px solid transparent",cursor:"pointer",transform:editCh.color===col?"scale(1.2)":"scale(1)"}}/>
                       ))}
+                    </div>
+                  </div>
+                  {/* メンバー管理 */}
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:11,color:"#555",fontWeight:700,marginBottom:8}}>メンバー</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                      {(targetCh?.members||[]).map(m=>(
+                        <div key={m} style={{background:"#F5F0E8",borderRadius:20,padding:"4px 10px",display:"flex",alignItems:"center",gap:5,fontSize:12}}>
+                          <span>{m}</span>
+                          {m!==ME&&<button onClick={async()=>{
+                            const newM=(targetCh.members||[]).filter(x=>x!==m);
+                            setChannels(p=>p.map(c=>c.id===showChSettings?{...c,members:newM}:c));
+                            await supabase.from("channels").update({members:newM}).eq("id",showChSettings);
+                          }} style={{background:"none",border:"none",cursor:"pointer",color:"#AAA",fontSize:13,lineHeight:1,padding:0}}>×</button>}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <input id="addMemberInput" placeholder="ニックネームを入力..."
+                        style={{flex:1,border:"1.5px solid #E8E0D5",borderRadius:10,padding:"8px 12px",fontSize:12,outline:"none"}}/>
+                      <button onClick={async()=>{
+                        const input=document.getElementById("addMemberInput");
+                        const name=input?.value?.trim();
+                        if(!name) return;
+                        const cur=targetCh?.members||[];
+                        if(cur.includes(name)){input.value="";return;}
+                        const newM=[...cur,name];
+                        setChannels(p=>p.map(c=>c.id===showChSettings?{...c,members:newM}:c));
+                        await supabase.from("channels").update({members:newM}).eq("id",showChSettings);
+                        input.value="";
+                      }} style={{background:"#6C63FF",color:"white",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}>追加</button>
                     </div>
                   </div>
                   <div style={{display:"flex",gap:8,marginBottom:10}}>
