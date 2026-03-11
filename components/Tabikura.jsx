@@ -1,0 +1,775 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+
+// ── 定数 ──────────────────────────────────────────────────────
+const EMOJI_CANDIDATES = ["👍","🎉","🍜","☕","🏖","🌸","🍣","🍺","🎨","🗻","🌊","⛩","🍡","🦀","🎭","🌺","🚂","🦋","🍰","🎶","💯","🤩","😍","🥳","🌈","🎯"];
+const CATEGORIES = ["すべて","グルメ","カフェ","宿泊","体験","観光","ショッピング"];
+const CAT_EMOJI = { グルメ:"🍜", カフェ:"☕", 宿泊:"🏨", 体験:"🎨", 観光:"🗺", ショッピング:"🛍" };
+const ME = "あなた", MY_AVT = "A", MY_CLR = "#6C63FF";
+const CH_COLORS = ["#E8A87C","#7CB9E8","#7CE8B0","#E87CB9","#C8E87C"];
+const MEMBER_COLORS = ["#6C63FF","#F4A261","#2A9D8F","#E87CB9","#C8E87C","#7CB9E8"];
+
+// チャネルタイプ定義
+const CH_TYPES = {
+  memo:      { label: "メモ・スレッド", icon: "💬", desc: "行きたい場所やアイデアを自由に共有" },
+  itinerary: { label: "計画・しおり",   icon: "🗓", desc: "日程と時間を決めて旅のしおりを作成" },
+};
+
+// ── 初期データ ─────────────────────────────────────────────────
+const INITIAL_CHANNELS = [
+  { id:"ch1", name:"🗾 東北旅行 2025夏",  members:["あなた","みく","たろう"],          color:"#E8A87C", type:"itinerary" },
+  { id:"ch2", name:"🗼 東京デート",        members:["あなた","みく"],                   color:"#7CB9E8", type:"memo" },
+  { id:"ch3", name:"🌊 沖縄計画",          members:["あなた","たろう","さくら","けん"], color:"#7CE8B0", type:"itinerary" },
+];
+
+const INITIAL_POSTS = {
+  ch1: [
+    { id:"p1", author:"みく",   avatar:"M", avatarColor:"#F4A261", title:"鳴子温泉 西多賀旅館",   category:"宿泊", done:false,
+      planDate:"2025-08-02", planTime:"15:00",
+      hours:"IN 15:00 / OUT 10:00", closed:"不定休",
+      reactions:{"❤️":["あなた","たろう"],"✈️":["あなた"],"🔥":["たろう"]},
+      comments:[{id:"c1",author:"たろう",avatar:"T",avatarColor:"#2A9D8F",text:"露天風呂あるの？！行きたい！",time:"2時間前"},{id:"c2",author:"あなた",avatar:"A",avatarColor:"#6C63FF",text:"あるよ〜！最高らしい✨",time:"1時間前"}], time:"昨日" },
+    { id:"p2", author:"たろう", avatar:"T", avatarColor:"#2A9D8F", title:"こけし工房 絵付け体験",  category:"体験", done:true,
+      planDate:"2025-08-03", planTime:"10:00",
+      hours:"10:00〜16:00", closed:"水曜定休",
+      reactions:{"🎨":["みく"],"😆":["みく"]},
+      comments:[], time:"3日前" },
+    { id:"p3", author:"あなた", avatar:"A", avatarColor:"#6C63FF", title:"陸羽東線 車窓の旅",     category:"観光", done:false,
+      planDate:"2025-08-03", planTime:"13:30",
+      hours:"時刻表に準ずる", closed:"無休",
+      reactions:{"🚂":["みく","たろう"],"😮":["みく"]},
+      comments:[{id:"c3",author:"みく",avatar:"M",avatarColor:"#F4A261",text:"秘境駅に止まるやつ？！",time:"5時間前"}], time:"今日" },
+  ],
+  ch2: [
+    { id:"p4", author:"あなた", avatar:"A", avatarColor:"#6C63FF", title:"猿田彦珈琲 渋谷店", category:"カフェ", done:false,
+      planDate:null, planTime:null,
+      hours:"8:00〜22:00", closed:"無休",
+      reactions:{"❤️":["みく"],"☕":["みく"]},
+      comments:[{id:"c4",author:"みく",avatar:"M",avatarColor:"#F4A261",text:"ここずっと行ってみたかった☕",time:"30分前"}], time:"今日" },
+  ],
+  ch3: [],
+};
+
+// ── ユーティリティ ────────────────────────────────────────────
+function calcDist(lat1,lng1,lat2,lng2){
+  const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  const d=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  return d<1?`${Math.round(d*1000)}m`:`${d.toFixed(1)}km`;
+}
+
+function fmtDate(dateStr){
+  if(!dateStr) return null;
+  const d=new Date(dateStr);
+  return `${d.getMonth()+1}/${d.getDate()}(${["日","月","火","水","木","金","土"][d.getDay()]})`;
+}
+
+// ── 共通コンポーネント ─────────────────────────────────────────
+function Avt({i,c,s=32}){
+  return <div style={{width:s,height:s,borderRadius:"50%",background:c,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:800,fontSize:s*0.38,flexShrink:0}}>{i}</div>;
+}
+
+function ReactionBar({reactions,onReact}){
+  const [showPicker,setShowPicker]=useState(false);
+  const [customEmoji,setCustomEmoji]=useState("");
+  const ref=useRef(null);
+  useEffect(()=>{
+    const h=(e)=>{ if(ref.current&&!ref.current.contains(e.target)) setShowPicker(false); };
+    document.addEventListener("mousedown",h);
+    return ()=>document.removeEventListener("mousedown",h);
+  },[]);
+  return(
+    <div style={{padding:"0 10px 6px",display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+      {Object.entries(reactions).map(([emoji,users])=>{
+        const isMine=users.includes(ME);
+        return(
+          <button key={emoji} onClick={()=>onReact(emoji)} style={{background:isMine?"#6C63FF18":"#F5F0E8",border:`1px solid ${isMine?"#6C63FF55":"transparent"}`,borderRadius:20,padding:"4px 9px",cursor:"pointer",fontSize:13,color:isMine?"#6C63FF":"#555",fontWeight:isMine?700:400,display:"flex",alignItems:"center",gap:3}}>
+            {emoji}{users.length>0&&<span style={{fontSize:10}}>{users.length}</span>}
+          </button>
+        );
+      })}
+      <div style={{position:"relative"}} ref={ref}>
+        <button onClick={()=>setShowPicker(p=>!p)} style={{background:showPicker?"#1A1A2E":"#F0EEF8",border:"none",borderRadius:20,padding:"4px 10px",cursor:"pointer",color:showPicker?"white":"#888",fontSize:14,fontWeight:700,lineHeight:1}}>＋</button>
+        {showPicker&&(
+          <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,background:"white",borderRadius:14,padding:12,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",zIndex:300,width:230}}>
+            <div style={{fontSize:10,color:"#AAA",fontWeight:700,marginBottom:8,letterSpacing:1}}>よく使う絵文字</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>
+              {EMOJI_CANDIDATES.map(e=>(
+                <button key={e} onClick={()=>{onReact(e);setShowPicker(false);}} style={{background:"#F7F3EE",border:"none",borderRadius:8,padding:"5px 7px",cursor:"pointer",fontSize:17}}>{e}</button>
+              ))}
+            </div>
+            <div style={{borderTop:"1px solid #F0EEF8",paddingTop:9}}>
+              <div style={{fontSize:10,color:"#AAA",fontWeight:700,marginBottom:6}}>絵文字を直接入力</div>
+              <div style={{display:"flex",gap:5}}>
+                <input value={customEmoji} onChange={e=>setCustomEmoji(e.target.value)} placeholder="😊" maxLength={2} style={{flex:1,border:"1.5px solid #E8E0D5",borderRadius:8,padding:"6px 8px",fontSize:18,outline:"none",textAlign:"center"}}/>
+                <button onClick={()=>{if(customEmoji.trim()){onReact(customEmoji.trim());setCustomEmoji("");setShowPicker(false);}}} style={{background:"#6C63FF",color:"white",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>追加</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── PostCard ──────────────────────────────────────────────────
+function mapsUrl(title, location){
+  if(location?.lat&&location?.lng)
+    return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(title)}`;
+}
+
+function PostCard({post,gps,expanded,onExpand,onToggleDone,onReact,onAddComment,onEditComment,onDeleteComment,onEdit,onDelete,isItinerary}){
+  const [commentText,setCommentText]=useState("");
+  const [editing,setEditing]=useState(false);
+  const [editTitle,setEditTitle]=useState(post.title);
+  const [editCat,setEditCat]=useState(post.category);
+  const [editDate,setEditDate]=useState(post.planDate||"");
+  const [editTime,setEditTime]=useState(post.planTime||"");
+  const [editHours,setEditHours]=useState(post.hours||"");
+  const [editClosed,setEditClosed]=useState(post.closed||"");
+  const [showMenu,setShowMenu]=useState(false);
+  const [editingComment,setEditingComment]=useState(null);
+  const [editCommentText,setEditCommentText]=useState("");
+  const dist=gps&&post.location?calcDist(gps.lat,gps.lng,post.location.lat,post.location.lng):null;
+  const submitComment=()=>{ if(!commentText.trim()) return; onAddComment(post.id,commentText.trim()); setCommentText(""); };
+  const submitEdit=()=>{ if(!editTitle.trim()) return; onEdit(post.id,editTitle.trim(),editCat,editDate||null,editTime||null,editHours||null,editClosed||null); setEditing(false); };
+  const cancelEdit=()=>{ setEditing(false); setEditTitle(post.title); setEditCat(post.category); setEditHours(post.hours||""); setEditClosed(post.closed||""); };
+  const startEditComment=(c)=>{ setEditingComment(c.id); setEditCommentText(c.text); };
+  const submitEditComment=(cid)=>{ if(!editCommentText.trim()) return; onEditComment(post.id,cid,editCommentText.trim()); setEditingComment(null); };
+
+  if(editing) return(
+    <div style={{background:"white",borderRadius:14,marginBottom:10,padding:14,boxShadow:"0 1px 8px rgba(0,0,0,0.05)",border:"2px solid #6C63FF44"}}>
+      <div style={{fontSize:11,color:"#6C63FF",fontWeight:700,marginBottom:10}}>✏️ 編集中</div>
+      <input value={editTitle} onChange={e=>setEditTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.nativeEvent.isComposing&&submitEdit()} autoFocus
+        placeholder="場所・お店名" style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:10,padding:"8px 12px",fontSize:13,outline:"none",marginBottom:10}}/>
+      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
+        {CATEGORIES.filter(c=>c!=="すべて").map(cat=>(
+          <button key={cat} onClick={()=>setEditCat(cat)} style={{background:editCat===cat?"#1A1A2E":"#F5F0E8",color:editCat===cat?"white":"#888",border:"none",borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:10,fontWeight:editCat===cat?700:400}}>{CAT_EMOJI[cat]} {cat}</button>
+        ))}
+      </div>
+      {isItinerary&&(
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:"#AAA",fontWeight:600,marginBottom:4}}>📅 日付</div>
+            <input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:10,padding:"7px 10px",fontSize:12,outline:"none"}}/>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:"#AAA",fontWeight:600,marginBottom:4}}>🕐 時刻</div>
+            <input type="time" value={editTime} onChange={e=>setEditTime(e.target.value)} style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:10,padding:"7px 10px",fontSize:12,outline:"none"}}/>
+          </div>
+        </div>
+      )}
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:10,color:"#AAA",fontWeight:600,marginBottom:4}}>🕐 営業時間</div>
+          <input value={editHours} onChange={e=>setEditHours(e.target.value)}
+            placeholder="例: 10:00〜22:00" style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:10,padding:"7px 10px",fontSize:12,outline:"none"}}/>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:10,color:"#AAA",fontWeight:600,marginBottom:4}}>🚫 定休日</div>
+          <input value={editClosed} onChange={e=>setEditClosed(e.target.value)}
+            placeholder="例: 水曜定休" style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:10,padding:"7px 10px",fontSize:12,outline:"none"}}/>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={cancelEdit} style={{flex:1,background:"#F5F0E8",color:"#888",border:"none",borderRadius:10,padding:"8px",cursor:"pointer",fontWeight:600,fontSize:12}}>キャンセル</button>
+        <button onClick={submitEdit} style={{flex:2,background:"#6C63FF",color:"white",border:"none",borderRadius:10,padding:"8px",cursor:"pointer",fontWeight:700,fontSize:12}}>保存 ✓</button>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{background:"white",borderRadius:14,marginBottom:10,overflow:"visible",boxShadow:"0 1px 8px rgba(0,0,0,0.05)",border:post.done?"2px solid #2A9D8F30":"2px solid transparent",opacity:post.done?0.8:1}}>
+      <div style={{padding:"14px 14px 6px",display:"flex",gap:10}}>
+        <Avt i={post.avatar} c={post.avatarColor}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+            <span style={{fontWeight:700,fontSize:12,color:"#333"}}>{post.author}</span>
+            <span style={{color:"#CCC",fontSize:10}}>{post.time}</span>
+            <div style={{marginLeft:"auto",position:"relative"}}>
+              <button onClick={()=>setShowMenu(p=>!p)} style={{background:"none",border:"none",cursor:"pointer",color:"#BBB",fontSize:18,padding:"0 4px",lineHeight:1}}>⋯</button>
+              {showMenu&&(
+                <div style={{position:"absolute",right:0,top:"100%",background:"white",borderRadius:10,boxShadow:"0 4px 20px rgba(0,0,0,0.15)",zIndex:100,overflow:"hidden",minWidth:110}}>
+                  <button onClick={()=>{setEditing(true);setShowMenu(false);}} style={{width:"100%",background:"none",border:"none",padding:"10px 14px",cursor:"pointer",fontSize:12,color:"#333",textAlign:"left",display:"flex",alignItems:"center",gap:8}}>✏️ 編集</button>
+                  <button onClick={()=>{setShowMenu(false);onDelete(post.id);}} style={{width:"100%",background:"none",border:"none",padding:"10px 14px",cursor:"pointer",fontSize:12,color:"#E05",textAlign:"left",display:"flex",alignItems:"center",gap:8}}>🗑 削除</button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+            <button onClick={()=>onToggleDone(post.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0,marginTop:2,flexShrink:0}}>
+              <div style={{width:20,height:20,borderRadius:5,border:post.done?"none":"2px solid #DDD",background:post.done?"#2A9D8F":"white",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {post.done&&<span style={{color:"white",fontSize:11,fontWeight:800}}>✓</span>}
+              </div>
+            </button>
+            <div style={{minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:14,color:post.done?"#AAA":"#1A1A2E",textDecoration:post.done?"line-through":"none"}}>{post.title}</div>
+              <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{background:"#1A1A2E10",color:"#1A1A2E",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{CAT_EMOJI[post.category]||"📍"} {post.category}</span>
+                {/* 日時バッジ (しおりモードのみ) */}
+                {isItinerary&&post.planDate&&(
+                  <span style={{background:"#6C63FF12",color:"#6C63FF",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:3}}>
+                    📅 {fmtDate(post.planDate)}{post.planTime&&` ${post.planTime}`}
+                  </span>
+                )}
+                {dist&&<span style={{fontSize:10,color:"#2A9D8F",fontWeight:600}}>📍 {dist}</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {(post.hours||post.closed)&&(
+        <div style={{padding:"0 14px 6px",display:"flex",gap:12,flexWrap:"wrap"}}>
+          {post.hours&&<span style={{fontSize:10,color:"#888"}}>🕐 {post.hours}</span>}
+          {post.closed&&<span style={{fontSize:10,color:"#E07"}}>🚫 {post.closed}</span>}
+        </div>
+      )}
+
+      <ReactionBar reactions={post.reactions||{}} onReact={emoji=>onReact(post.id,emoji)}/>
+
+      <div style={{padding:"0 10px 10px",display:"flex",gap:4,alignItems:"center"}}>
+        <button onClick={()=>onExpand(post.id)} style={{background:expanded?"#6C63FF18":"#F5F0E8",border:`1px solid ${expanded?"#6C63FF55":"transparent"}`,borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:11,color:expanded?"#6C63FF":"#AAA",fontWeight:expanded?700:400,display:"flex",alignItems:"center",gap:3}}>
+          💬{post.comments.length>0&&` ${post.comments.length}`}
+        </button>
+        <a href={mapsUrl(post.title,post.location)} target="_blank" rel="noopener noreferrer"
+          style={{background:"#E8F4FE",border:"1px solid #4285F422",borderRadius:20,padding:"4px 10px",fontSize:10,color:"#4285F4",fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:4}}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="#4285F4"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+          Google マップ
+        </a>
+      </div>
+
+      {expanded&&(
+        <div style={{borderTop:"1px solid #F5F0E8",background:"#FAFAF8"}}>
+          {post.comments.map(c=>(
+            <div key={c.id} style={{padding:"10px 14px",display:"flex",gap:8}}>
+              <Avt i={c.avatar} c={c.avatarColor} s={26}/>
+              <div style={{flex:1,minWidth:0}}>
+                {editingComment===c.id?(
+                  <div style={{background:"white",borderRadius:12,padding:"8px 12px",border:"1.5px solid #6C63FF44"}}>
+                    <input value={editCommentText} onChange={e=>setEditCommentText(e.target.value)}
+                      onKeyDown={e=>{if(e.key==="Enter"&&!e.nativeEvent.isComposing)submitEditComment(c.id);if(e.key==="Escape")setEditingComment(null);}}
+                      autoFocus style={{width:"100%",border:"none",outline:"none",fontSize:13,color:"#333",background:"transparent"}}/>
+                    <div style={{display:"flex",gap:6,marginTop:6,justifyContent:"flex-end"}}>
+                      <button onClick={()=>setEditingComment(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#AAA",fontWeight:600}}>キャンセル</button>
+                      <button onClick={()=>submitEditComment(c.id)} style={{background:"#6C63FF",color:"white",border:"none",borderRadius:8,padding:"3px 10px",cursor:"pointer",fontSize:11,fontWeight:700}}>保存</button>
+                    </div>
+                  </div>
+                ):(
+                  <div style={{background:"white",borderRadius:12,padding:"7px 12px"}}>
+                    <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:3}}>
+                      <span style={{fontWeight:700,fontSize:11,color:"#333"}}>{c.author}</span>
+                      <span style={{fontSize:9,color:"#CCC"}}>{c.time}</span>
+                      {c.author===ME&&(
+                        <div style={{marginLeft:"auto",display:"flex",gap:2}}>
+                          <button onClick={()=>startEditComment(c)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#CCC",padding:"0 3px"}}>✏️</button>
+                          <button onClick={()=>onDeleteComment(post.id,c.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#CCC",padding:"0 3px"}}>🗑</button>
+                        </div>
+                      )}
+                    </div>
+                    <span style={{fontSize:13,color:"#444"}}>{c.text}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          <div style={{padding:"8px 12px 12px",display:"flex",gap:6}}>
+            <Avt i={MY_AVT} c={MY_CLR} s={26}/>
+            <input value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.nativeEvent.isComposing&&submitComment()} placeholder="コメントを追加..." style={{flex:1,border:"1.5px solid #E8E0D5",borderRadius:20,padding:"6px 14px",fontSize:12,outline:"none"}}/>
+            <button onClick={submitComment} style={{background:"#6C63FF",color:"white",border:"none",borderRadius:20,padding:"6px 14px",fontSize:11,cursor:"pointer",fontWeight:700}}>送信</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── しおりモード: 日付グループヘッダー ──────────────────────────
+function DateGroupHeader({dateStr, posts}){
+  const done = posts.filter(p=>p.done).length;
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 8px",padding:"0 2px"}}>
+      <div style={{background:"#1A1A2E",color:"white",borderRadius:10,padding:"4px 12px",fontSize:12,fontWeight:900,flexShrink:0}}>
+        📅 {fmtDate(dateStr)}
+      </div>
+      <div style={{flex:1,height:1,background:"#E8E0D5"}}/>
+      <div style={{fontSize:10,color:"#AAA",fontWeight:600,flexShrink:0}}>{done}/{posts.length}</div>
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────
+export default function App(){
+  const [channels,setChannels]=useState(INITIAL_CHANNELS);
+  const [posts,setPosts]=useState(INITIAL_POSTS);
+  const [activeChannel,setActiveChannel]=useState("ch1");
+  const [filterCat,setFilterCat]=useState("すべて");
+  const [filterDone,setFilterDone]=useState("すべて");
+  const [sortByDate,setSortByDate]=useState(true); // しおりモード用
+  const [expandedPost,setExpandedPost]=useState(null);
+  const [gps,setGps]=useState(null);
+  const [showNewPost,setShowNewPost]=useState(false);
+  const [showNewCh,setShowNewCh]=useState(false);
+  const [newPost,setNewPost]=useState({title:"",category:"グルメ",planDate:"",planTime:"",hours:"",closed:""});
+  const [newCh,setNewCh]=useState({name:"",type:"memo"});
+  const [showChSettings,setShowChSettings]=useState(null);
+  const [editCh,setEditCh]=useState({name:"",type:"memo",color:""});
+  const [showDeleteConfirm,setShowDeleteConfirm]=useState(false);
+  const [showInvite,setShowInvite]=useState(false);
+  const [inviteEmail,setInviteEmail]=useState("");
+  const [inviteTab,setInviteTab]=useState("members");
+  const [pendingInvites,setPendingInvites]=useState({ch1:[{email:"hanako@example.com",sentAt:"3日前"}],ch2:[],ch3:[]});
+  const [inviteSent,setInviteSent]=useState(false);
+  const [copiedLink,setCopiedLink]=useState(false);
+
+  useEffect(()=>{ navigator.geolocation?.getCurrentPosition(p=>setGps({lat:p.coords.latitude,lng:p.coords.longitude})); },[]);
+
+  const ch=channels.find(c=>c.id===activeChannel);
+  const isItinerary=ch?.type==="itinerary";
+  const allPosts=posts[activeChannel]||[];
+  const doneCount=allPosts.filter(p=>p.done).length;
+
+  // フィルタリング
+  let filtered=allPosts.filter(p=>{
+    if(filterCat!=="すべて"&&p.category!==filterCat) return false;
+    if(filterDone==="未完了"&&p.done) return false;
+    if(filterDone==="完了"&&!p.done) return false;
+    return true;
+  });
+
+  // しおりモードの日付順ソート
+  if(isItinerary&&sortByDate){
+    filtered=[...filtered].sort((a,b)=>{
+      const da=(a.planDate||"9999")+(a.planTime||"99:99");
+      const db=(b.planDate||"9999")+(b.planTime||"99:99");
+      return da.localeCompare(db);
+    });
+  }
+
+  // しおりモード: 日付グループ化
+  const grouped=isItinerary&&sortByDate ? (() => {
+    const map={};
+    filtered.forEach(p=>{
+      const key=p.planDate||"__nodate__";
+      if(!map[key]) map[key]=[];
+      map[key].push(p);
+    });
+    return map;
+  })() : null;
+
+  // ── ハンドラー ──
+  const toggleDone=id=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id===id?{...x,done:!x.done}:x)}));
+  const toggleReaction=(id,emoji)=>setPosts(prev=>({...prev,[activeChannel]:prev[activeChannel].map(p=>{
+    if(p.id!==id) return p;
+    const cur={...(p.reactions||{})};
+    const users=cur[emoji]||[];
+    const hasMe=users.includes(ME);
+    const nu=hasMe?users.filter(u=>u!==ME):[...users,ME];
+    if(nu.length===0) delete cur[emoji]; else cur[emoji]=nu;
+    return {...p,reactions:cur};
+  })}));
+  const addComment=(id,text)=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==id?x:{...x,comments:[...x.comments,{id:"c"+Date.now(),author:ME,avatar:MY_AVT,avatarColor:MY_CLR,text,time:"今"}]})}));
+  const editComment=(postId,cid,text)=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==postId?x:{...x,comments:x.comments.map(c=>c.id!==cid?c:{...c,text,time:"今(編集済み)"})})}));
+  const deleteComment=(postId,cid)=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==postId?x:{...x,comments:x.comments.filter(c=>c.id!==cid)})}));
+  const editPost=(id,title,category,planDate,planTime,hours,closed)=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==id?x:{...x,title,category,planDate:planDate||null,planTime:planTime||null,hours:hours||null,closed:closed||null})}));
+  const deletePost=(id)=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].filter(x=>x.id!==id)}));
+
+  const addPost=()=>{
+    if(!newPost.title.trim()) return;
+    const id="p"+Date.now();
+    const post={id,author:ME,avatar:MY_AVT,avatarColor:MY_CLR,title:newPost.title,category:newPost.category,done:false,
+      planDate:newPost.planDate||null,planTime:newPost.planTime||null,
+      location:null,hours:newPost.hours||null,closed:newPost.closed||null,reactions:{},comments:[],time:"今"};
+    setPosts(p=>({...p,[activeChannel]:[post,...(p[activeChannel]||[])]}));
+    setNewPost({title:"",category:"グルメ",planDate:"",planTime:"",hours:"",closed:""});
+    setShowNewPost(false);
+  };
+
+  const addChannel=()=>{
+    if(!newCh.name.trim()) return;
+    const id="ch"+Date.now();
+    setChannels(p=>[...p,{id,name:newCh.name,members:[ME],color:CH_COLORS[Math.floor(Math.random()*CH_COLORS.length)],type:newCh.type}]);
+    setPosts(p=>({...p,[id]:[]}));
+    setActiveChannel(id);
+    setNewCh({name:"",type:"memo"});
+    setShowNewCh(false);
+  };
+
+  const openChSettings=(c)=>{ setEditCh({name:c.name,type:c.type||"memo",color:c.color}); setShowDeleteConfirm(false); setShowChSettings(c.id); };
+  const saveChSettings=()=>{ setChannels(p=>p.map(c=>c.id===showChSettings?{...c,name:editCh.name||c.name,type:editCh.type,color:editCh.color}:c)); setShowChSettings(null); };
+  const deleteChannel=()=>{ const remaining=channels.filter(c=>c.id!==showChSettings); setChannels(remaining); if(activeChannel===showChSettings) setActiveChannel(remaining[0]?.id||null); setShowChSettings(null); };
+
+  const sendInvite=()=>{
+    const email=inviteEmail.trim();
+    if(!email||!email.includes("@")) return;
+    setPendingInvites(p=>({...p,[activeChannel]:[...(p[activeChannel]||[]),{email,sentAt:"たった今"}]}));
+    setInviteEmail("");
+    setInviteSent(true);
+    setTimeout(()=>setInviteSent(false),3000);
+  };
+  const cancelInvite=(email)=>setPendingInvites(p=>({...p,[activeChannel]:p[activeChannel].filter(i=>i.email!==email)}));
+  const removeMember=(name)=>setChannels(p=>p.map(c=>c.id===activeChannel?{...c,members:c.members.filter(x=>x!==name)}:c));
+  const copyInviteLink=()=>{ setCopiedLink(true); setTimeout(()=>setCopiedLink(false),2000); };
+
+  // ── PostCardのラッパー ──
+  const renderCard=(post,idx)=>(
+    <PostCard key={post.id} post={post} idx={idx} gps={gps}
+      expanded={expandedPost===post.id}
+      onExpand={id=>setExpandedPost(p=>p===id?null:id)}
+      onToggleDone={toggleDone} onReact={toggleReaction}
+      onAddComment={addComment} onEditComment={editComment} onDeleteComment={deleteComment}
+      onEdit={editPost} onDelete={deletePost}
+      isItinerary={isItinerary}/>
+  );
+
+  return(
+    <div style={{display:"flex",height:"100vh",background:"#F7F3EE",fontFamily:"'Hiragino Sans','Noto Sans JP',sans-serif",overflow:"hidden"}}>
+      <style>{`*{box-sizing:border-box;margin:0;padding:0;}::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}button,input{font-family:inherit;}`}</style>
+
+      {/* ── SIDEBAR ── */}
+      <div style={{width:220,background:"#18172B",display:"flex",flexDirection:"column",flexShrink:0}}>
+        <div style={{padding:"16px 14px",flex:1,overflowY:"auto"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+            <div style={{width:32,height:32,borderRadius:10,background:"linear-gradient(135deg,#6C63FF,#F4A261)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🗺</div>
+            <div>
+              <div style={{color:"white",fontWeight:900,fontSize:14}}>Tabikura</div>
+              <div style={{color:"#6660A0",fontSize:9}}>行きたいをまとめよう</div>
+            </div>
+          </div>
+          <div style={{background:"#22203A",borderRadius:8,padding:"5px 10px",marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:gps?"#2A9D8F":"#555"}}/>
+            <div style={{color:gps?"#2A9D8F":"#555",fontSize:10,fontWeight:600}}>{gps?"現在地 取得済み":"現在地 取得中..."}</div>
+          </div>
+          <div style={{color:"#4A4870",fontSize:9,fontWeight:700,letterSpacing:1.5,marginBottom:6}}>CHANNELS</div>
+          {channels.map(c=>(
+            <div key={c.id} style={{position:"relative",marginBottom:2}} className="ch-row">
+              <button onClick={()=>setActiveChannel(c.id)} style={{width:"100%",background:activeChannel===c.id?"#2A2940":"transparent",border:"none",borderRadius:8,padding:"7px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:8,textAlign:"left",paddingRight:28}}>
+                <div style={{width:6,height:6,borderRadius:"50%",background:c.color,flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{color:activeChannel===c.id?"white":"#8884AA",fontSize:11,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
+                  <div style={{color:"#4A4870",fontSize:9,display:"flex",alignItems:"center",gap:4,marginTop:1}}>
+                    <span>{CH_TYPES[c.type||"memo"].icon}</span>
+                    <span>{CH_TYPES[c.type||"memo"].label}</span>
+                  </div>
+                </div>
+                <div style={{background:"#2A2940",color:"#6660A0",fontSize:10,borderRadius:10,padding:"1px 5px",flexShrink:0}}>{(posts[c.id]||[]).length}</div>
+              </button>
+              <button onClick={e=>{e.stopPropagation();openChSettings(c);}} title="設定" style={{position:"absolute",right:4,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#4A4870",fontSize:12,padding:"3px 4px",lineHeight:1,borderRadius:6,opacity:0.7}}>⚙️</button>
+            </div>
+          ))}
+
+          {showNewCh?(
+            <div style={{background:"#22203A",borderRadius:10,padding:10,marginTop:4}}>
+              <input value={newCh.name} onChange={e=>setNewCh(p=>({...p,name:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&!e.nativeEvent.isComposing&&addChannel()}
+                placeholder="チャネル名..." autoFocus style={{width:"100%",background:"#18172B",border:"none",borderRadius:6,padding:"6px 8px",color:"white",fontSize:11,outline:"none",marginBottom:8}}/>
+              {/* タイプ選択 */}
+              <div style={{display:"flex",gap:5,marginBottom:8}}>
+                {Object.entries(CH_TYPES).map(([key,val])=>(
+                  <button key={key} onClick={()=>setNewCh(p=>({...p,type:key}))} style={{flex:1,background:newCh.type===key?"#6C63FF":"#18172B",color:newCh.type===key?"white":"#6660A0",border:`1px solid ${newCh.type===key?"#6C63FF":"#2A2940"}`,borderRadius:8,padding:"6px 4px",cursor:"pointer",fontSize:10,fontWeight:700,textAlign:"center"}}>
+                    {val.icon}<div style={{fontSize:9,marginTop:2}}>{val.label}</div>
+                  </button>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                <button onClick={addChannel} style={{flex:1,background:"#6C63FF",color:"white",border:"none",borderRadius:6,padding:"5px 0",fontSize:11,cursor:"pointer",fontWeight:700}}>作成</button>
+                <button onClick={()=>setShowNewCh(false)} style={{background:"#333",color:"#888",border:"none",borderRadius:6,padding:"5px 8px",fontSize:11,cursor:"pointer"}}>×</button>
+              </div>
+            </div>
+          ):(
+            <button onClick={()=>setShowNewCh(true)} style={{width:"100%",background:"transparent",border:"1px dashed #2A2940",borderRadius:8,padding:"6px",color:"#4A4870",cursor:"pointer",fontSize:11,marginTop:4}}>＋ 新しいチャネル</button>
+          )}
+        </div>
+        <div style={{padding:"10px 14px",borderTop:"1px solid #22203A",display:"flex",alignItems:"center",gap:8}}>
+          <Avt i={MY_AVT} c={MY_CLR} s={26}/>
+          <div><div style={{color:"white",fontSize:11,fontWeight:700}}>{ME}</div><div style={{color:"#4A4870",fontSize:9}}>オーナー</div></div>
+        </div>
+      </div>
+
+      {/* ── MAIN ── */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+
+        {/* ヘッダー */}
+        <div style={{background:"white",borderBottom:"1px solid #EDE8E0",padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{fontWeight:900,fontSize:16,color:"#1A1A2E"}}>{ch?.name}</div>
+              {/* タイプバッジ */}
+              <span style={{background:isItinerary?"#6C63FF12":"#F4A26120",color:isItinerary?"#6C63FF":"#F4A261",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>
+                {ch&&CH_TYPES[ch.type||"memo"].icon} {ch&&CH_TYPES[ch.type||"memo"].label}
+              </span>
+            </div>
+            <div style={{fontSize:10,color:"#AAA",marginTop:2}}>{ch?.members.join(" · ")} · {doneCount}/{allPosts.length} 完了</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{fontSize:11,color:"#2A9D8F",fontWeight:700}}>{allPosts.length?Math.round(doneCount/allPosts.length*100):0}%</div>
+            <div style={{width:50,height:4,background:"#EEE",borderRadius:3,overflow:"hidden"}}>
+              <div style={{width:`${allPosts.length?doneCount/allPosts.length*100:0}%`,height:"100%",background:"#2A9D8F",borderRadius:3}}/>
+            </div>
+          </div>
+          <button onClick={()=>setShowInvite(true)} style={{background:"#F5F0E8",color:"#555",border:"none",borderRadius:10,padding:"8px 12px",cursor:"pointer",fontWeight:700,fontSize:12}}>👤＋ 招待</button>
+          <button onClick={()=>setShowNewPost(true)} style={{background:"#6C63FF",color:"white",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:12,boxShadow:"0 4px 12px #6C63FF44"}}>＋ 追加</button>
+        </div>
+
+        {/* フィルターバー */}
+        <div style={{background:"white",borderBottom:"1px solid #EDE8E0",padding:"6px 16px",display:"flex",gap:4,overflowX:"auto",alignItems:"center"}}>
+          {CATEGORIES.map(cat=>(
+            <button key={cat} onClick={()=>setFilterCat(cat)} style={{background:filterCat===cat?"#1A1A2E":"#F5F0E8",color:filterCat===cat?"white":"#888",border:"none",borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:10,fontWeight:filterCat===cat?700:400,whiteSpace:"nowrap"}}>{cat!=="すべて"&&CAT_EMOJI[cat]+" "}{cat}</button>
+          ))}
+          <div style={{width:1,height:16,background:"#EDE8E0",flexShrink:0,margin:"0 3px"}}/>
+          {[["すべて","#888"],["未完了","#F4A261"],["完了","#2A9D8F"]].map(([f,col])=>(
+            <button key={f} onClick={()=>setFilterDone(f)} style={{background:filterDone===f?col:"#F5F0E8",color:filterDone===f?"white":"#888",border:"none",borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:10,fontWeight:filterDone===f?700:400,whiteSpace:"nowrap"}}>{f==="完了"?"✓ ":""}{f}</button>
+          ))}
+          {/* しおりモードのみ: 日時ソートトグル */}
+          {isItinerary&&(
+            <>
+              <div style={{width:1,height:16,background:"#EDE8E0",flexShrink:0,margin:"0 3px"}}/>
+              <button onClick={()=>setSortByDate(p=>!p)} style={{background:sortByDate?"#1A1A2E":"#F5F0E8",color:sortByDate?"white":"#888",border:"none",borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:10,fontWeight:sortByDate?700:400,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:3}}>
+                🗓 {sortByDate?"日時順":"追加順"}
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* 投稿リスト */}
+        <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
+          {filtered.length===0?(
+            <div style={{textAlign:"center",padding:"60px 20px",color:"#CCC"}}>
+              <div style={{fontSize:48,marginBottom:10}}>{isItinerary?"🗓":"💬"}</div>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:4,color:"#AAA"}}>まだ投稿がありません</div>
+              <div style={{fontSize:12}}>「＋ 追加」から{isItinerary?"予定":"行きたい場所"}を追加しよう！</div>
+            </div>
+          ) : grouped ? (
+            // しおりモード: 日付グループ表示
+            Object.entries(grouped).map(([dateKey,groupPosts])=>(
+              <div key={dateKey}>
+                <DateGroupHeader dateStr={dateKey==="__nodate__"?null:dateKey} posts={groupPosts}/>
+                {dateKey==="__nodate__"&&(
+                  <div style={{fontSize:11,color:"#AAA",marginBottom:8,paddingLeft:2}}>📌 日付未設定</div>
+                )}
+                {groupPosts.map((post,idx)=>renderCard(post,idx))}
+              </div>
+            ))
+          ) : (
+            filtered.map((post,idx)=>renderCard(post,idx))
+          )}
+        </div>
+      </div>
+
+      {/* ── 新規投稿モーダル ── */}
+      {showNewPost&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
+          <div style={{background:"white",borderRadius:20,padding:22,width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+            <div style={{fontWeight:900,fontSize:16,marginBottom:16,color:"#1A1A2E"}}>
+              {isItinerary?"🗓 予定を追加":"💬 場所を追加"}
+            </div>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:10,color:"#AAA",fontWeight:600,marginBottom:5}}>場所・お店名</div>
+              <input value={newPost.title} onChange={e=>setNewPost(p=>({...p,title:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&!e.nativeEvent.isComposing&&addPost()}
+                placeholder="例: 猿田彦珈琲 渋谷店" autoFocus style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:10,padding:"9px 12px",fontSize:13,outline:"none"}}/>
+            </div>
+            <div style={{marginBottom:isItinerary?10:16}}>
+              <div style={{fontSize:10,color:"#AAA",fontWeight:600,marginBottom:6}}>カテゴリ</div>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {CATEGORIES.filter(c=>c!=="すべて").map(cat=>(
+                  <button key={cat} onClick={()=>setNewPost(p=>({...p,category:cat}))} style={{background:newPost.category===cat?"#1A1A2E":"#F5F0E8",color:newPost.category===cat?"white":"#888",border:"none",borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:10,fontWeight:newPost.category===cat?700:400}}>{CAT_EMOJI[cat]} {cat}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* しおりモードのみ: 日付・時刻入力 */}
+            {isItinerary&&(
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:10,color:"#AAA",fontWeight:600,marginBottom:6}}>日程・時刻（任意）</div>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:9,color:"#BBB",marginBottom:3}}>📅 日付</div>
+                    <input type="date" value={newPost.planDate} onChange={e=>setNewPost(p=>({...p,planDate:e.target.value}))}
+                      style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:10,padding:"7px 10px",fontSize:12,outline:"none"}}/>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:9,color:"#BBB",marginBottom:3}}>🕐 時刻</div>
+                    <input type="time" value={newPost.planTime} onChange={e=>setNewPost(p=>({...p,planTime:e.target.value}))}
+                      style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:10,padding:"7px 10px",fontSize:12,outline:"none"}}/>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,color:"#AAA",fontWeight:600,marginBottom:5}}>🕐 営業時間（任意）</div>
+                <input value={newPost.hours} onChange={e=>setNewPost(p=>({...p,hours:e.target.value}))}
+                  placeholder="例: 10:00〜22:00" style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:10,padding:"8px 10px",fontSize:12,outline:"none"}}/>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,color:"#AAA",fontWeight:600,marginBottom:5}}>🚫 定休日（任意）</div>
+                <input value={newPost.closed} onChange={e=>setNewPost(p=>({...p,closed:e.target.value}))}
+                  placeholder="例: 水曜定休" style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:10,padding:"8px 10px",fontSize:12,outline:"none"}}/>
+              </div>
+            </div>
+
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setShowNewPost(false)} style={{flex:1,background:"#F5F0E8",color:"#888",border:"none",borderRadius:10,padding:"10px",cursor:"pointer",fontWeight:600}}>キャンセル</button>
+              <button onClick={addPost} style={{flex:2,background:"#6C63FF",color:"white",border:"none",borderRadius:10,padding:"10px",cursor:"pointer",fontWeight:700,fontSize:12,boxShadow:"0 4px 12px #6C63FF44"}}>追加する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 招待モーダル ── */}
+      {showInvite&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>{setShowInvite(false);setInviteTab("members");}}>
+          <div style={{background:"white",borderRadius:24,width:"100%",maxWidth:400,boxShadow:"0 24px 60px rgba(0,0,0,0.25)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:"20px 22px 0"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                <div style={{width:36,height:36,borderRadius:12,background:"linear-gradient(135deg,#6C63FF,#F4A261)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>👥</div>
+                <div><div style={{fontWeight:900,fontSize:16,color:"#1A1A2E"}}>メンバー管理</div><div style={{fontSize:11,color:"#AAA"}}>{ch?.name}</div></div>
+                <button onClick={()=>{setShowInvite(false);setInviteTab("members");}} style={{marginLeft:"auto",background:"none",border:"none",cursor:"pointer",color:"#CCC",fontSize:22,lineHeight:1}}>×</button>
+              </div>
+              <div style={{display:"flex",gap:0,marginTop:16,borderBottom:"2px solid #F0EEE8"}}>
+                {[["members","👤 メンバー"],["invite","✉️ 招待する"]].map(([tab,label])=>(
+                  <button key={tab} onClick={()=>setInviteTab(tab)} style={{background:"none",border:"none",padding:"8px 14px",cursor:"pointer",fontSize:12,fontWeight:700,color:inviteTab===tab?"#6C63FF":"#AAA",borderBottom:inviteTab===tab?"2px solid #6C63FF":"2px solid transparent",marginBottom:-2}}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{padding:"18px 22px 22px",maxHeight:420,overflowY:"auto"}}>
+              {inviteTab==="members"&&(
+                <div>
+                  <div style={{fontSize:10,color:"#AAA",fontWeight:700,marginBottom:10,letterSpacing:1}}>参加中 {ch?.members.length}人</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:18}}>
+                    {ch?.members.map((m,i)=>(
+                      <div key={m} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:"#F7F3EE",borderRadius:12}}>
+                        <div style={{width:36,height:36,borderRadius:"50%",background:MEMBER_COLORS[i%MEMBER_COLORS.length],display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:14,fontWeight:800,flexShrink:0}}>{m[0].toUpperCase()}</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#1A1A2E"}}>{m}{m===ME&&<span style={{fontSize:9,color:"#6C63FF",fontWeight:700,background:"#6C63FF18",borderRadius:10,padding:"1px 6px",marginLeft:4}}>あなた</span>}</div>
+                          <div style={{fontSize:10,color:"#AAA",marginTop:1}}>{m===ME?"オーナー · tabikura登録済み":"メンバー · tabikura登録済み"}</div>
+                        </div>
+                        {m!==ME&&<button onClick={()=>removeMember(m)} style={{background:"#FEE8E8",border:"none",borderRadius:8,padding:"5px 9px",cursor:"pointer",fontSize:10,color:"#E05",fontWeight:700}}>削除</button>}
+                      </div>
+                    ))}
+                  </div>
+                  {(pendingInvites[activeChannel]||[]).length>0&&(
+                    <div>
+                      <div style={{fontSize:10,color:"#AAA",fontWeight:700,marginBottom:10,letterSpacing:1}}>招待済み（未登録）</div>
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {(pendingInvites[activeChannel]||[]).map(inv=>(
+                          <div key={inv.email} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:"#FFF8EE",borderRadius:12,border:"1px dashed #F4A26155"}}>
+                            <div style={{width:36,height:36,borderRadius:"50%",background:"#F4A26133",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>✉️</div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:700,color:"#1A1A2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inv.email}</div>
+                              <div style={{fontSize:10,color:"#F4A261",marginTop:1}}>招待メール送信済み · {inv.sentAt}</div>
+                            </div>
+                            <button onClick={()=>cancelInvite(inv.email)} style={{background:"none",border:"none",cursor:"pointer",color:"#CCC",fontSize:14,padding:"0 4px"}}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <button onClick={()=>setInviteTab("invite")} style={{width:"100%",background:"#6C63FF",color:"white",border:"none",borderRadius:12,padding:"12px",cursor:"pointer",fontWeight:700,fontSize:13,marginTop:18,boxShadow:"0 4px 12px #6C63FF33"}}>＋ 新しいメンバーを招待</button>
+                </div>
+              )}
+              {inviteTab==="invite"&&(
+                <div>
+                  {inviteSent&&<div style={{background:"#E8F8F2",borderRadius:12,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>✅</span><span style={{fontSize:12,color:"#2A9D8F",fontWeight:700}}>招待メールを送信しました！</span></div>}
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:11,color:"#555",fontWeight:700,marginBottom:8}}>メールアドレスで招待</div>
+                    <div style={{fontSize:11,color:"#AAA",marginBottom:12,lineHeight:1.6}}>入力したアドレスに招待メールが届きます。受け取った人はTabikuraに登録後、このチャネルに自動で参加できます。</div>
+                    <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.nativeEvent.isComposing&&sendInvite()} placeholder="friend@example.com" type="email" autoFocus style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:12,padding:"11px 14px",fontSize:13,outline:"none",marginBottom:8}}/>
+                    <button onClick={sendInvite} style={{width:"100%",background:inviteEmail.includes("@")?"#6C63FF":"#DDD",color:"white",border:"none",borderRadius:12,padding:"12px",cursor:inviteEmail.includes("@")?"pointer":"default",fontWeight:700,fontSize:13}}>✉️ 招待メールを送る</button>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+                    <div style={{flex:1,height:1,background:"#EEE"}}/><span style={{fontSize:10,color:"#BBB",fontWeight:600}}>または</span><div style={{flex:1,height:1,background:"#EEE"}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:11,color:"#555",fontWeight:700,marginBottom:8}}>招待リンクをシェア</div>
+                    <div style={{background:"#F7F3EE",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                      <div style={{flex:1,fontSize:11,color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>https://tabikura.app/join/{activeChannel.slice(-4)}?ref=invite</div>
+                      <button onClick={copyInviteLink} style={{background:copiedLink?"#2A9D8F":"#6C63FF",color:"white",border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:10,fontWeight:700,flexShrink:0}}>{copiedLink?"✓ コピー済み":"コピー"}</button>
+                    </div>
+                    <div style={{fontSize:10,color:"#AAA",lineHeight:1.6}}>⚠️ このリンクを知っている人は誰でも参加できます。リンクは7日間有効です。</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── チャネル設定モーダル ── */}
+      {showChSettings&&(()=>{
+        const targetCh=channels.find(c=>c.id===showChSettings);
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:20}} onClick={()=>setShowChSettings(null)}>
+            <div style={{background:"white",borderRadius:24,width:"100%",maxWidth:380,boxShadow:"0 24px 60px rgba(0,0,0,0.25)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+              <div style={{padding:"20px 22px 18px",borderBottom:"1px solid #F0EEE8",display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:36,height:36,borderRadius:12,background:editCh.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>⚙️</div>
+                <div>
+                  <div style={{fontWeight:900,fontSize:16,color:"#1A1A2E"}}>チャネル設定</div>
+                  <div style={{fontSize:11,color:"#AAA"}}>{targetCh?.name}</div>
+                </div>
+                <button onClick={()=>setShowChSettings(null)} style={{marginLeft:"auto",background:"none",border:"none",cursor:"pointer",color:"#CCC",fontSize:22,lineHeight:1}}>×</button>
+              </div>
+              {!showDeleteConfirm?(
+                <div style={{padding:"18px 22px 22px"}}>
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:11,color:"#555",fontWeight:700,marginBottom:6}}>チャネル名</div>
+                    <input value={editCh.name} onChange={e=>setEditCh(p=>({...p,name:e.target.value}))}
+                      style={{width:"100%",border:"1.5px solid #E8E0D5",borderRadius:12,padding:"10px 14px",fontSize:13,outline:"none"}}/>
+                  </div>
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:11,color:"#555",fontWeight:700,marginBottom:8}}>チャネルの目的</div>
+                    <div style={{display:"flex",gap:8}}>
+                      {Object.entries(CH_TYPES).map(([key,val])=>(
+                        <button key={key} onClick={()=>setEditCh(p=>({...p,type:key}))} style={{flex:1,background:editCh.type===key?"#1A1A2E":"#F7F3EE",color:editCh.type===key?"white":"#888",border:`2px solid ${editCh.type===key?"#1A1A2E":"transparent"}`,borderRadius:12,padding:"10px 8px",cursor:"pointer",textAlign:"center"}}>
+                          <div style={{fontSize:20,marginBottom:4}}>{val.icon}</div>
+                          <div style={{fontSize:11,fontWeight:700}}>{val.label}</div>
+                          <div style={{fontSize:9,marginTop:3,opacity:0.7,lineHeight:1.4}}>{val.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                    {editCh.type!==(targetCh?.type||"memo")&&(
+                      <div style={{marginTop:8,background:"#FFF8EE",borderRadius:8,padding:"7px 10px",fontSize:11,color:"#F4A261",fontWeight:600}}>
+                        ⚠️ タイプを変えても投稿データはそのまま残ります
+                      </div>
+                    )}
+                  </div>
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:11,color:"#555",fontWeight:700,marginBottom:8}}>カラー</div>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                      {["#E8A87C","#7CB9E8","#7CE8B0","#E87CB9","#C8E87C","#F4A261","#6C63FF","#2A9D8F","#E84040","#F4D261"].map(col=>(
+                        <button key={col} onClick={()=>setEditCh(p=>({...p,color:col}))} style={{width:28,height:28,borderRadius:"50%",background:col,border:editCh.color===col?"3px solid #1A1A2E":"3px solid transparent",cursor:"pointer",transform:editCh.color===col?"scale(1.2)":"scale(1)"}}/>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:8,marginBottom:10}}>
+                    <button onClick={()=>setShowChSettings(null)} style={{flex:1,background:"#F5F0E8",color:"#888",border:"none",borderRadius:12,padding:"11px",cursor:"pointer",fontWeight:600,fontSize:13}}>キャンセル</button>
+                    <button onClick={saveChSettings} style={{flex:2,background:"#6C63FF",color:"white",border:"none",borderRadius:12,padding:"11px",cursor:"pointer",fontWeight:700,fontSize:13,boxShadow:"0 4px 12px #6C63FF33"}}>保存する ✓</button>
+                  </div>
+                  <button onClick={()=>setShowDeleteConfirm(true)} style={{width:"100%",background:"none",border:"1.5px solid #FFD0D0",borderRadius:12,padding:"10px",cursor:"pointer",fontWeight:700,fontSize:12,color:"#E05"}}>
+                    🗑 このチャネルを削除する
+                  </button>
+                </div>
+              ):(
+                <div style={{padding:"22px 22px 22px",textAlign:"center"}}>
+                  <div style={{fontSize:48,marginBottom:12}}>🗑</div>
+                  <div style={{fontWeight:900,fontSize:16,color:"#1A1A2E",marginBottom:8}}>本当に削除しますか？</div>
+                  <div style={{fontSize:13,color:"#888",marginBottom:6,lineHeight:1.7}}>
+                    「{targetCh?.name}」を削除すると<br/>
+                    <strong style={{color:"#E05"}}>{(posts[showChSettings]||[]).length}件の投稿</strong>もすべて削除されます。<br/>
+                    この操作は取り消せません。
+                  </div>
+                  <div style={{display:"flex",gap:8,marginTop:18}}>
+                    <button onClick={()=>setShowDeleteConfirm(false)} style={{flex:1,background:"#F5F0E8",color:"#888",border:"none",borderRadius:12,padding:"12px",cursor:"pointer",fontWeight:700,fontSize:13}}>やめる</button>
+                    <button onClick={deleteChannel} style={{flex:1,background:"#E05",color:"white",border:"none",borderRadius:12,padding:"12px",cursor:"pointer",fontWeight:700,fontSize:13}}>削除する</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
