@@ -342,7 +342,7 @@ export default function App(){
       const {data:chs}=await supabase.from("channels").select("*").order("created_at");
       const {data:ps}=await supabase.from("posts").select("*").order("created_at");
       if(chs?.length){
-        const savedNick2=localStorage.getItem("tabikura_nickname")||"あなた"; const chList=chs.filter(c=>(c.members||[]).includes(savedNick2)).map(c=>({id:c.id,name:c.name,color:c.color,type:c.type,members:c.members||[]}));
+        const chList=chs.map(c=>({id:c.id,name:c.name,color:c.color,type:c.type,members:c.members||[ME]}));
         setChannels(chList);
         setActiveChannel(chList[0].id);
         setOnboarding(false);
