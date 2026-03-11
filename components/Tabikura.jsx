@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { supabase } from "@/lib/supabase";
 
 // ── 定数 ──────────────────────────────────────────────────────
 const EMOJI_CANDIDATES = ["👍","🎉","🍜","☕","🏖","🌸","🍣","🍺","🎨","🗻","🌊","⛩","🍡","🦀","🎭","🌺","🚂","🦋","🍰","🎶","💯","🤩","😍","🥳","🌈","🎯"];
@@ -315,18 +316,8 @@ export default function App(){
   const [joinInvite,setJoinInvite]=useState(null); // 招待参加モーダル用
   const [loaded,setLoaded]=useState(false);
 
-  // ── ローカルストレージから読み込み ──
+  // ── Supabaseからデータ読み込み + リアルタイム購読 ──
   useEffect(()=>{
-    try {
-      const saved=localStorage.getItem("tabikura_v1");
-      if(saved){
-        const data=JSON.parse(saved);
-        if(data.channels?.length){ setChannels(data.channels); setActiveChannel(data.channels[0].id); }
-        if(data.posts) setPosts(data.posts);
-        setOnboarding(data.onboarding!==false);
-      }
-    } catch(e){}
-
     // URLの招待パラメータチェック
     try {
       const params=new URLSearchParams(window.location.search);
@@ -334,22 +325,46 @@ export default function App(){
       if(joinParam){
         const ch=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(joinParam)))));
         setJoinInvite(ch);
-        // URLをきれいにする
         window.history.replaceState({},"",window.location.pathname);
       }
     } catch(e){}
 
     navigator.geolocation?.getCurrentPosition(p=>setGps({lat:p.coords.latitude,lng:p.coords.longitude}));
-    setLoaded(true);
-  },[]);
 
-  // ── ローカルストレージに保存 ──
-  useEffect(()=>{
-    if(!loaded) return;
-    try {
-      localStorage.setItem("tabikura_v1",JSON.stringify({channels,posts,onboarding:false}));
-    } catch(e){}
-  },[channels,posts,loaded]);
+    // 初回データ読み込み
+    const loadData=async()=>{
+      const {data:chs}=await supabase.from("channels").select("*").order("created_at");
+      const {data:ps}=await supabase.from("posts").select("*").order("created_at");
+      if(chs?.length){
+        const chList=chs.map(c=>({id:c.id,name:c.name,color:c.color,type:c.type,members:c.members||[ME]}));
+        setChannels(chList);
+        setActiveChannel(chList[0].id);
+        setOnboarding(false);
+      }
+      if(ps?.length){
+        const postMap={};
+        ps.forEach(p=>{
+          if(!postMap[p.channel_id]) postMap[p.channel_id]=[];
+          postMap[p.channel_id].push({
+            id:p.id,author:p.author,avatar:p.avatar,avatarColor:p.avatar_color,
+            title:p.title,category:p.category,done:p.done,
+            planDate:p.plan_date,planTime:p.plan_time,
+            location:p.location,hours:p.hours,closed:p.closed,
+            reactions:p.reactions||{},comments:p.comments||[],time:p.time
+          });
+        });
+        setPosts(postMap);
+      }
+      setLoaded(true);
+    };
+    loadData();
+
+    // リアルタイム購読
+    const chSub=supabase.channel("channels_rt").on("postgres_changes",{event:"*",schema:"public",table:"channels"},()=>loadData()).subscribe();
+    const pSub=supabase.channel("posts_rt").on("postgres_changes",{event:"*",schema:"public",table:"posts"},()=>loadData()).subscribe();
+
+    return()=>{ supabase.removeChannel(chSub); supabase.removeChannel(pSub); };
+  },[]);
 
   // ── 招待リンク生成 ──
   const getInviteUrl=(chId)=>{
@@ -358,21 +373,6 @@ export default function App(){
     const data={id:ch.id,name:ch.name,color:ch.color,type:ch.type};
     const encoded=encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(data)))));
     return `${window.location.origin}?join=${encoded}`;
-  };
-
-  // ── 招待チャネルに参加 ──
-  const acceptJoinInvite=()=>{
-    if(!joinInvite) return;
-    const exists=channels.find(c=>c.id===joinInvite.id);
-    if(!exists){
-      setChannels(prev=>[...prev,{...joinInvite,members:[ME]}]);
-      setPosts(prev=>({...prev,[joinInvite.id]:[]}));
-      setActiveChannel(joinInvite.id);
-      if(onboarding) setOnboarding(false);
-    } else {
-      setActiveChannel(joinInvite.id);
-    }
-    setJoinInvite(null);
   };
 
   const finishOnboarding=()=>{ setOnboarding(false); };
@@ -413,51 +413,111 @@ export default function App(){
     return map;
   })() : null;
 
-  // ── ハンドラー ──
-  const toggleDone=id=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id===id?{...x,done:!x.done}:x)}));
-  const toggleReaction=(id,emoji)=>setPosts(prev=>({...prev,[activeChannel]:prev[activeChannel].map(p=>{
-    if(p.id!==id) return p;
-    const cur={...(p.reactions||{})};
+  // ── ハンドラー（Supabase書き込み） ──
+  const toggleDone=async(id)=>{
+    const post=posts[activeChannel]?.find(p=>p.id===id);
+    if(!post) return;
+    await supabase.from("posts").update({done:!post.done}).eq("id",id);
+  };
+
+  const toggleReaction=async(id,emoji)=>{
+    const post=posts[activeChannel]?.find(p=>p.id===id);
+    if(!post) return;
+    const cur={...(post.reactions||{})};
     const users=cur[emoji]||[];
     const hasMe=users.includes(ME);
     const nu=hasMe?users.filter(u=>u!==ME):[...users,ME];
     if(nu.length===0) delete cur[emoji]; else cur[emoji]=nu;
-    return {...p,reactions:cur};
-  })}));
-  const addComment=(id,text)=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==id?x:{...x,comments:[...x.comments,{id:"c"+Date.now(),author:ME,avatar:MY_AVT,avatarColor:MY_CLR,text,time:"今"}]})}));
-  const editComment=(postId,cid,text)=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==postId?x:{...x,comments:x.comments.map(c=>c.id!==cid?c:{...c,text,time:"今(編集済み)"})})}));
-  const deleteComment=(postId,cid)=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==postId?x:{...x,comments:x.comments.filter(c=>c.id!==cid)})}));
-  const editPost=(id,title,category,planDate,planTime,hours,closed)=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==id?x:{...x,title,category,planDate:planDate||null,planTime:planTime||null,hours:hours||null,closed:closed||null})}));
-  const deletePost=(id)=>setPosts(p=>({...p,[activeChannel]:p[activeChannel].filter(x=>x.id!==id)}));
+    await supabase.from("posts").update({reactions:cur}).eq("id",id);
+  };
 
-  const addPost=()=>{
+  const addComment=async(id,text)=>{
+    const post=posts[activeChannel]?.find(p=>p.id===id);
+    if(!post) return;
+    const newComments=[...post.comments,{id:"c"+Date.now(),author:ME,avatar:MY_AVT,avatarColor:MY_CLR,text,time:"今"}];
+    await supabase.from("posts").update({comments:newComments}).eq("id",id);
+  };
+
+  const editComment=async(postId,cid,text)=>{
+    const post=posts[activeChannel]?.find(p=>p.id===postId);
+    if(!post) return;
+    const newComments=post.comments.map(c=>c.id!==cid?c:{...c,text,time:"今(編集済み)"});
+    await supabase.from("posts").update({comments:newComments}).eq("id",postId);
+  };
+
+  const deleteComment=async(postId,cid)=>{
+    const post=posts[activeChannel]?.find(p=>p.id===postId);
+    if(!post) return;
+    const newComments=post.comments.filter(c=>c.id!==cid);
+    await supabase.from("posts").update({comments:newComments}).eq("id",postId);
+  };
+
+  const editPost=async(id,title,category,planDate,planTime,hours,closed)=>{
+    await supabase.from("posts").update({title,category,plan_date:planDate||null,plan_time:planTime||null,hours:hours||null,closed:closed||null}).eq("id",id);
+  };
+
+  const deletePost=async(id)=>{
+    await supabase.from("posts").delete().eq("id",id);
+  };
+
+  const addPost=async()=>{
     if(!newPost.title.trim()) return;
     const id="p"+Date.now();
-    const post={id,author:ME,avatar:MY_AVT,avatarColor:MY_CLR,title:newPost.title,category:newPost.category,done:false,
-      planDate:newPost.planDate||null,planTime:newPost.planTime||null,
-      location:null,hours:newPost.hours||null,closed:newPost.closed||null,reactions:{},comments:[],time:"今"};
-    setPosts(p=>({...p,[activeChannel]:[post,...(p[activeChannel]||[])]}));
+    await supabase.from("posts").insert({
+      id,channel_id:activeChannel,author:ME,avatar:MY_AVT,avatar_color:MY_CLR,
+      title:newPost.title,category:newPost.category,done:false,
+      plan_date:newPost.planDate||null,plan_time:newPost.planTime||null,
+      location:null,hours:newPost.hours||null,closed:newPost.closed||null,
+      reactions:{},comments:[],time:"今"
+    });
     setNewPost({title:"",category:"グルメ",planDate:"",planTime:"",hours:"",closed:""});
     setShowNewPost(false);
   };
 
-  const addChannel=()=>{
+  const addChannel=async()=>{
     if(!newCh.name.trim()) return;
     const id="ch"+Date.now();
-    setChannels(p=>[...p,{id,name:newCh.name,members:[ME],color:CH_COLORS[Math.floor(Math.random()*CH_COLORS.length)],type:newCh.type}]);
-    setPosts(p=>({...p,[id]:[]}));
+    const color=CH_COLORS[Math.floor(Math.random()*CH_COLORS.length)];
+    await supabase.from("channels").insert({id,name:newCh.name,members:[ME],color,type:newCh.type});
     setActiveChannel(id);
     setNewCh({name:"",type:"memo"});
     setShowNewCh(false);
+    if(onboarding) setOnboarding(false);
   };
 
   const openChSettings=(c)=>{ setEditCh({name:c.name,type:c.type||"memo",color:c.color}); setShowDeleteConfirm(false); setShowChSettings(c.id); };
-  const saveChSettings=()=>{ setChannels(p=>p.map(c=>c.id===showChSettings?{...c,name:editCh.name||c.name,type:editCh.type,color:editCh.color}:c)); setShowChSettings(null); };
-  const deleteChannel=()=>{ const remaining=channels.filter(c=>c.id!==showChSettings); setChannels(remaining); if(activeChannel===showChSettings) setActiveChannel(remaining[0]?.id||null); setShowChSettings(null); };
+  const saveChSettings=async()=>{
+    await supabase.from("channels").update({name:editCh.name,type:editCh.type,color:editCh.color}).eq("id",showChSettings);
+    setShowChSettings(null);
+  };
+  const deleteChannel=async()=>{
+    await supabase.from("channels").delete().eq("id",showChSettings);
+    const remaining=channels.filter(c=>c.id!==showChSettings);
+    if(activeChannel===showChSettings) setActiveChannel(remaining[0]?.id||null);
+    setShowChSettings(null);
+  };
 
-  const removeMember=(name)=>setChannels(p=>p.map(c=>c.id===activeChannel?{...c,members:c.members.filter(x=>x!==name)}:c));
+  const removeMember=async(name)=>{
+    const ch=channels.find(c=>c.id===activeChannel);
+    if(!ch) return;
+    const newMembers=ch.members.filter(x=>x!==name);
+    await supabase.from("channels").update({members:newMembers}).eq("id",activeChannel);
+  };
 
-  // ── PostCardのラッパー ──
+  // 招待参加（Supabaseにチャネルが既存なら参加、なければ作成）
+  const acceptJoinInvite=async()=>{
+    if(!joinInvite) return;
+    const {data:existing}=await supabase.from("channels").select("*").eq("id",joinInvite.id).single();
+    if(existing){
+      const newMembers=existing.members.includes(ME)?existing.members:[...existing.members,ME];
+      await supabase.from("channels").update({members:newMembers}).eq("id",joinInvite.id);
+    } else {
+      await supabase.from("channels").insert({id:joinInvite.id,name:joinInvite.name,color:joinInvite.color,type:joinInvite.type,members:[ME]});
+    }
+    setActiveChannel(joinInvite.id);
+    if(onboarding) setOnboarding(false);
+    setJoinInvite(null);
+  };
   const renderCard=(post,idx)=>(
     <PostCard key={post.id} post={post} idx={idx} gps={gps}
       expanded={expandedPost===post.id}
