@@ -421,10 +421,12 @@ export default function App(){
     return map;
   })() : null;
 
-  // ── ハンドラー（Supabase書き込み） ──
+  // ── ハンドラー（楽観的更新 + Supabase書き込み） ──
   const toggleDone=async(id)=>{
     const post=posts[activeChannel]?.find(p=>p.id===id);
     if(!post) return;
+    // すぐにUI更新
+    setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id===id?{...x,done:!x.done}:x)}));
     await supabase.from("posts").update({done:!post.done}).eq("id",id);
   };
 
@@ -436,6 +438,8 @@ export default function App(){
     const hasMe=users.includes(ME);
     const nu=hasMe?users.filter(u=>u!==ME):[...users,ME];
     if(nu.length===0) delete cur[emoji]; else cur[emoji]=nu;
+    // すぐにUI更新
+    setPosts(prev=>({...prev,[activeChannel]:prev[activeChannel].map(p=>p.id===id?{...p,reactions:cur}:p)}));
     await supabase.from("posts").update({reactions:cur}).eq("id",id);
   };
 
@@ -443,6 +447,8 @@ export default function App(){
     const post=posts[activeChannel]?.find(p=>p.id===id);
     if(!post) return;
     const newComments=[...post.comments,{id:"c"+Date.now(),author:ME,avatar:MY_AVT,avatarColor:MY_CLR,text,time:"今"}];
+    // すぐにUI更新
+    setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id===id?{...x,comments:newComments}:x)}));
     await supabase.from("posts").update({comments:newComments}).eq("id",id);
   };
 
@@ -450,6 +456,7 @@ export default function App(){
     const post=posts[activeChannel]?.find(p=>p.id===postId);
     if(!post) return;
     const newComments=post.comments.map(c=>c.id!==cid?c:{...c,text,time:"今(編集済み)"});
+    setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==postId?x:{...x,comments:newComments})}));
     await supabase.from("posts").update({comments:newComments}).eq("id",postId);
   };
 
@@ -457,62 +464,76 @@ export default function App(){
     const post=posts[activeChannel]?.find(p=>p.id===postId);
     if(!post) return;
     const newComments=post.comments.filter(c=>c.id!==cid);
+    setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==postId?x:{...x,comments:newComments})}));
     await supabase.from("posts").update({comments:newComments}).eq("id",postId);
   };
 
   const editPost=async(id,title,category,planDate,planTime,hours,closed)=>{
+    setPosts(p=>({...p,[activeChannel]:p[activeChannel].map(x=>x.id!==id?x:{...x,title,category,planDate:planDate||null,planTime:planTime||null,hours:hours||null,closed:closed||null})}));
     await supabase.from("posts").update({title,category,plan_date:planDate||null,plan_time:planTime||null,hours:hours||null,closed:closed||null}).eq("id",id);
   };
 
   const deletePost=async(id)=>{
+    setPosts(p=>({...p,[activeChannel]:p[activeChannel].filter(x=>x.id!==id)}));
     await supabase.from("posts").delete().eq("id",id);
   };
 
   const addPost=async()=>{
     if(!newPost.title.trim()) return;
     const id="p"+Date.now();
-    await supabase.from("posts").insert({
-      id,channel_id:activeChannel,author:ME,avatar:MY_AVT,avatar_color:MY_CLR,
-      title:newPost.title,category:newPost.category,done:false,
-      plan_date:newPost.planDate||null,plan_time:newPost.planTime||null,
-      location:null,hours:newPost.hours||null,closed:newPost.closed||null,
-      reactions:{},comments:[],time:"今"
-    });
+    const post={id,author:ME,avatar:MY_AVT,avatarColor:MY_CLR,title:newPost.title,category:newPost.category,done:false,
+      planDate:newPost.planDate||null,planTime:newPost.planTime||null,
+      location:null,hours:newPost.hours||null,closed:newPost.closed||null,reactions:{},comments:[],time:"今"};
+    // すぐにUI更新
+    setPosts(p=>({...p,[activeChannel]:[post,...(p[activeChannel]||[])]}));
     setNewPost({title:"",category:"グルメ",planDate:"",planTime:"",hours:"",closed:""});
     setShowNewPost(false);
+    await supabase.from("posts").insert({
+      id,channel_id:activeChannel,author:ME,avatar:MY_AVT,avatar_color:MY_CLR,
+      title:post.title,category:post.category,done:false,
+      plan_date:post.planDate,plan_time:post.planTime,
+      location:null,hours:post.hours,closed:post.closed,
+      reactions:{},comments:[],time:"今"
+    });
   };
 
   const addChannel=async()=>{
     if(!newCh.name.trim()) return;
     const id="ch"+Date.now();
     const color=CH_COLORS[Math.floor(Math.random()*CH_COLORS.length)];
-    await supabase.from("channels").insert({id,name:newCh.name,members:[ME],color,type:newCh.type});
+    const newChannel={id,name:newCh.name,members:[ME],color,type:newCh.type};
+    // すぐにUI更新
+    setChannels(p=>[...p,newChannel]);
+    setPosts(p=>({...p,[id]:[]}));
     setActiveChannel(id);
     setNewCh({name:"",type:"memo"});
     setShowNewCh(false);
     if(onboarding) setOnboarding(false);
+    await supabase.from("channels").insert({id,name:newCh.name,members:[ME],color,type:newCh.type});
   };
 
   const openChSettings=(c)=>{ setEditCh({name:c.name,type:c.type||"memo",color:c.color}); setShowDeleteConfirm(false); setShowChSettings(c.id); };
   const saveChSettings=async()=>{
-    await supabase.from("channels").update({name:editCh.name,type:editCh.type,color:editCh.color}).eq("id",showChSettings);
+    setChannels(p=>p.map(c=>c.id===showChSettings?{...c,name:editCh.name,type:editCh.type,color:editCh.color}:c));
     setShowChSettings(null);
+    await supabase.from("channels").update({name:editCh.name,type:editCh.type,color:editCh.color}).eq("id",showChSettings);
   };
   const deleteChannel=async()=>{
-    await supabase.from("channels").delete().eq("id",showChSettings);
     const remaining=channels.filter(c=>c.id!==showChSettings);
+    setChannels(remaining);
     if(activeChannel===showChSettings) setActiveChannel(remaining[0]?.id||null);
     setShowChSettings(null);
+    await supabase.from("channels").delete().eq("id",showChSettings);
   };
 
   const removeMember=async(name)=>{
     const ch=channels.find(c=>c.id===activeChannel);
     if(!ch) return;
     const newMembers=ch.members.filter(x=>x!==name);
+    setChannels(p=>p.map(c=>c.id===activeChannel?{...c,members:newMembers}:c));
     await supabase.from("channels").update({members:newMembers}).eq("id",activeChannel);
   };
 
-  // 招待参加（Supabaseにチャネルが既存なら参加、なければ作成）
   const acceptJoinInvite=async()=>{
     if(!joinInvite) return;
     const {data:existing}=await supabase.from("channels").select("*").eq("id",joinInvite.id).single();
