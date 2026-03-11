@@ -344,8 +344,7 @@ export default function App(){
       if(chs?.length){
         const myName=localStorage.getItem("tabikura_nickname")||"あなた"; const chList=chs.filter(c=>(c.members||[]).includes(myName)).map(c=>({id:c.id,name:c.name,color:c.color,type:c.type,members:c.members||[]}));
         setChannels(chList);
-        setActiveChannel(chList[0].id);
-        setOnboarding(false);
+        if(chList.length){ setActiveChannel(chList[0].id); setOnboarding(false); }
       }
       if(ps?.length){
         const postMap={};
