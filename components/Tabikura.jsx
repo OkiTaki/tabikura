@@ -761,7 +761,7 @@ export default function App(){
                   <div>
                     <div style={{fontSize:11,color:"#555",fontWeight:700,marginBottom:8}}>招待リンクをシェア</div>
                     <div style={{background:"#F7F3EE",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                      <div style={{flex:1,fontSize:11,color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>https://tabikura.app/join/{activeChannel.slice(-4)}?ref=invite</div>
+                      <div style={{flex:1,fontSize:11,color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>https://tabikura.app/join/{(activeChannel||"").slice(-4)}?ref=invite</div>
                       <button onClick={copyInviteLink} style={{background:copiedLink?"#2A9D8F":"#6C63FF",color:"white",border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:10,fontWeight:700,flexShrink:0}}>{copiedLink?"✓ コピー済み":"コピー"}</button>
                     </div>
                     <div style={{fontSize:10,color:"#AAA",lineHeight:1.6}}>⚠️ このリンクを知っている人は誰でも参加できます。リンクは7日間有効です。</div>
