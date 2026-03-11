@@ -662,8 +662,8 @@ export default function App(){
       {showSidebar&&<div className="sidebar-overlay" onClick={()=>setShowSidebar(false)}/>}
 
       {/* ── SIDEBAR ── */}
-      <div className={`sidebar${showSidebar?" open":""}`}>
-        <div style={{padding:"16px 14px",flex:1,overflowY:"auto"}}>
+      <div className={`sidebar${showSidebar?" open":""}`} style={{display:"flex",flexDirection:"column",height:"100%"}}>
+        <div style={{padding:"16px 14px",flex:1,overflowY:"auto",minHeight:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
             <div style={{width:32,height:32,borderRadius:10,background:"linear-gradient(135deg,#6C63FF,#F4A261)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🗺</div>
             <div style={{flex:1}}>
@@ -716,7 +716,7 @@ export default function App(){
             <button onClick={()=>setShowNewCh(true)} style={{width:"100%",background:"transparent",border:"1px dashed #2A2940",borderRadius:8,padding:"6px",color:"#4A4870",cursor:"pointer",fontSize:11,marginTop:4}}>＋ 新しいチャネル</button>
           )}
         </div>
-        <div style={{padding:"10px 14px",borderTop:"1px solid #22203A",display:"flex",alignItems:"center",gap:8}}>
+        <div style={{padding:"10px 14px",borderTop:"1px solid #22203A",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
           <Avt i={MY_AVT} c={MY_CLR} s={26}/>
           <div style={{flex:1,minWidth:0}}>
             <div style={{color:"white",fontSize:11,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ME}</div>
