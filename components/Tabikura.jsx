@@ -376,6 +376,11 @@ export default function App(){
   };
 
   const finishOnboarding=()=>{ setOnboarding(false); };
+
+  // SSR対策：ローカルストレージ読み込み前は何も表示しない
+  if(!loaded) return null;
+
+  const ch=channels.find(c=>c.id===activeChannel);
   const isItinerary=ch?.type==="itinerary";
   const allPosts=posts[activeChannel]||[];
   const doneCount=allPosts.filter(p=>p.done).length;
