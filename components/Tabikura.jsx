@@ -490,6 +490,18 @@ export default function App(){
     setNickname(name);
     localStorage.setItem("tabikura_nickname",name);
     setNicknameError("");
+    // チャネルデータを読み込んでからオンボーディングを閉じる
+    const {data:chs}=await supabase.from("channels").select("*").order("created_at");
+    const {data:ps}=await supabase.from("posts").select("*").order("created_at");
+    const chList=(chs||[]).filter(c=>(c.members||[]).includes(name)).map(c=>({id:c.id,name:c.name,color:c.color,type:c.type,members:c.members||[]}));
+    setChannels(chList);
+    if(chList.length) setActiveChannel(chList[0].id);
+    const postMap={};
+    (ps||[]).forEach(p=>{
+      if(!postMap[p.channel_id]) postMap[p.channel_id]=[];
+      postMap[p.channel_id].push({id:p.id,author:p.author,avatar:p.avatar,avatarColor:p.avatar_color,title:p.title,category:p.category,done:p.done,planDate:p.plan_date,planTime:p.plan_time,location:p.location,hours:p.hours,closed:p.closed,reactions:p.reactions||{},comments:p.comments||[],time:p.time});
+    });
+    setPosts(postMap);
     setOnboarding(false);
   };
 
