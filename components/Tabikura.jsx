@@ -281,7 +281,7 @@ function PostCard({post,gps,expanded,onExpand,onToggleDone,onReact,onAddComment,
       {expanded&&(
         <div style={{borderTop:"1px solid #F5F0E8",background:"#FAFAF8"}}>
           {post.comments.map(c=>(
-            <div key={c.id} style={{padding:"10px 14px",display:"flex",gap:8}}>
+            <div key={c.id} style={{padding:"6px 14px 6px 20px",display:"flex",gap:8,borderLeft:"2px solid #E8E0D5",marginLeft:14,marginRight:14,marginBottom:4}}>
               <Avt i={c.avatar} c={c.avatarColor} s={26}/>
               <div style={{flex:1,minWidth:0}}>
                 {editingComment===c.id?(
@@ -746,7 +746,7 @@ export default function App(){
         button,input{font-family:inherit;}
         .sidebar{width:220px;background:#18172B;display:flex;flex-direction:column;flex-shrink:0;transition:transform 0.25s ease;}
         .sidebar-overlay{display:none;}
-        @media(min-width:641px){.hamburger{display:none !important;}}
+        @media(min-width:641px){.hamburger{display:none !important;}.sidebar-toggle{display:flex;}}
         @media(max-width:640px){
           .sidebar{position:fixed;top:0;left:0;height:100vh;z-index:500;transform:translateX(-100%);}
           .sidebar.open{transform:translateX(0);}
