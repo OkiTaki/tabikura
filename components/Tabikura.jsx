@@ -71,7 +71,7 @@ function ReactionBar({reactions,onReact,me}){
           ＋
         </button>
         {showPicker&&(
-          <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,background:"white",
+          <div style={{position:"absolute",top:"calc(100% + 8px)",left:0,background:"white",
             borderRadius:14,padding:12,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",zIndex:300,width:230}}>
             <div style={{fontSize:10,color:"#AAA",fontWeight:700,marginBottom:8,letterSpacing:1}}>よく使う絵文字</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>
