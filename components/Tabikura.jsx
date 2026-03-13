@@ -406,7 +406,7 @@ export default function App(){
       const savedNick=localStorage.getItem("tabikura_nickname");
       let validNick=null;
       if(savedNick){
-        const {data:u}=await supabase.from("users").select("nickname").eq("nickname",savedNick).single();
+        const {data:u}=await supabase.from("users").select("nickname").eq("nickname",savedNick).maybeSingle();
         if(u){ validNick=savedNick; setNickname(savedNick); }
         else{ localStorage.removeItem("tabikura_nickname"); }
       }
@@ -467,7 +467,7 @@ export default function App(){
   const confirmNickname=async()=>{
     const name=nicknameInput.trim();
     if(!name) return;
-    const {data:existing}=await supabase.from("users").select("nickname").eq("nickname",name).single();
+    const {data:existing}=await supabase.from("users").select("nickname").eq("nickname",name).maybeSingle();
     if(existing){ setNicknameError("このニックネームはすでに使われています"); return; }
     await supabase.from("users").insert({nickname:name});
     setNickname(name);
@@ -640,7 +640,7 @@ export default function App(){
 
   const acceptJoinInvite=async()=>{
     if(!joinInvite) return;
-    const {data:existing}=await supabase.from("channels").select("*").eq("id",joinInvite.id).single();
+    const {data:existing}=await supabase.from("channels").select("*").eq("id",joinInvite.id).maybeSingle();
     if(existing){
       const newMembers=existing.members.includes(ME)?existing.members:[...existing.members,ME];
       await supabase.from("channels").update({members:newMembers}).eq("id",joinInvite.id);
