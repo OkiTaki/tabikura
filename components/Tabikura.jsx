@@ -770,7 +770,7 @@ export default function App(){
               <div style={{color:"#6660A0",fontSize:9}}>行きたいをまとめよう</div>
             </div>
             <button onClick={()=>setShowSidebar(false)}
-              style={{background:"none",border:"none",color:"#4A4870",fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>
+              style={{background:"none",border:"none",color:"#4A4870",fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}} className="hamburger">
               ×
             </button>
           </div>
@@ -872,7 +872,7 @@ export default function App(){
         {/* ヘッダー */}
         <div style={{background:"white",borderBottom:"1px solid #EDE8E0",padding:"10px 12px",
           display:"flex",alignItems:"center",gap:8}}>
-          <button onClick={()=>setShowSidebar(true)}
+          <button onClick={()=>setShowSidebar(p=>!p)}
             style={{background:"none",border:"none",cursor:"pointer",padding:"4px 6px",
               borderRadius:8,color:"#555",fontSize:20,lineHeight:1,flexShrink:0}}>
             ☰
