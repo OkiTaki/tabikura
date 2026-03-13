@@ -369,6 +369,9 @@ export default function App(){
   const [nickname,setNickname]=useState("");
   const [nicknameInput,setNicknameInput]=useState("");
   const [nicknameError,setNicknameError]=useState("");
+  const [passwordInput,setPasswordInput]=useState("");
+  const [authStep,setAuthStep]=useState("nickname");
+  const [authMode,setAuthMode]=useState("register");
   const [filterCat,setFilterCat]=useState("すべて");
   const [filterDone,setFilterDone]=useState("すべて");
   const [sortByDate,setSortByDate]=useState(true);
@@ -464,12 +467,26 @@ export default function App(){
     return()=>{ supabase.removeChannel(chSub); supabase.removeChannel(pSub); };
   },[]);
 
-  const confirmNickname=async()=>{
+  const checkNickname=async()=>{
     const name=nicknameInput.trim();
     if(!name) return;
-    const {data:existing}=await supabase.from("users").select("nickname").eq("nickname",name).maybeSingle();
-    if(existing){ setNicknameError("このニックネームはすでに使われています"); return; }
-    await supabase.from("users").insert({nickname:name});
+    const {data:existing}=await supabase.from("users").select("nickname,password").eq("nickname",name).maybeSingle();
+    setAuthMode(existing?"login":"register");
+    setNicknameError("");
+    setPasswordInput("");
+    setAuthStep("password");
+  };
+  const confirmAuth=async()=>{
+    const name=nicknameInput.trim();
+    const pass=passwordInput.trim();
+    if(!name||!pass) return;
+    if(authMode==="register"){
+      const {error}=await supabase.from("users").insert({nickname:name,password:pass});
+      if(error){ setNicknameError("登録に失敗しました"); return; }
+    } else {
+      const {data:u}=await supabase.from("users").select("password").eq("nickname",name).maybeSingle();
+      if(!u||u.password!==pass){ setNicknameError("パスワードが違います"); return; }
+    }
     setNickname(name);
     localStorage.setItem("tabikura_nickname",name);
     setNicknameError("");
@@ -690,12 +707,31 @@ export default function App(){
         <div style={{color:"#8884AA",fontSize:13,lineHeight:1.7,whiteSpace:"pre-line"}}>{STEPS[onboardingStep].desc}</div>
         {onboardingStep===STEPS.length-1&&(
           <div style={{width:"100%",marginTop:16}}>
-            <input value={nicknameInput} onChange={e=>setNicknameInput(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&!e.nativeEvent.isComposing&&confirmNickname()}
-              placeholder="例：たろう、Miku..." autoFocus maxLength={12}
-              style={{width:"100%",background:"#18172B",
-                border:`2px solid ${nicknameError?"#E05":"#6C63FF55"}`,
-                borderRadius:12,padding:"12px 14px",color:"white",fontSize:15,outline:"none",textAlign:"center"}}/>
+            {authStep==="nickname"?(
+              <input value={nicknameInput} onChange={e=>setNicknameInput(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&!e.nativeEvent.isComposing&&checkNickname()}
+                placeholder="例：たろう、Miku..." autoFocus maxLength={12}
+                style={{width:"100%",background:"#18172B",border:`2px solid ${nicknameError?"#E05":"#6C63FF55"}`,
+                  borderRadius:12,padding:"12px 14px",color:"white",fontSize:15,outline:"none",textAlign:"center"}}/>
+            ):(
+              <>
+                <div style={{color:"#8884AA",fontSize:12,marginBottom:8}}>
+                  {authMode==="login"?`「${nicknameInput}」でログイン`:`「${nicknameInput}」を新規登録`}
+                </div>
+                <div style={{background:"#2A2950",borderRadius:10,padding:"8px 12px",marginBottom:8,fontSize:12,color:"#8884AA"}}>
+                  {authMode==="login"?"🔑 パスワードを入力":"🔑 パスワードを設定"}
+                </div>
+                <input value={passwordInput} onChange={e=>setPasswordInput(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&!e.nativeEvent.isComposing&&confirmAuth()}
+                  type="password" placeholder="パスワード" autoFocus
+                  style={{width:"100%",background:"#18172B",border:`2px solid ${nicknameError?"#E05":"#6C63FF55"}`,
+                    borderRadius:12,padding:"12px 14px",color:"white",fontSize:15,outline:"none",textAlign:"center"}}/>
+                <button onClick={()=>{setAuthStep("nickname");setNicknameError("");}}
+                  style={{background:"none",border:"none",color:"#6660A0",fontSize:11,cursor:"pointer",marginTop:8}}>
+                  ← 戻る
+                </button>
+              </>
+            )}
             {nicknameError&&<div style={{color:"#E05",fontSize:11,marginTop:6}}>{nicknameError}</div>}
           </div>
         )}
@@ -720,16 +756,16 @@ export default function App(){
           </button>
         </div>
       ):(
-        <button onClick={confirmNickname} disabled={!nicknameInput.trim()}
+        <button onClick={authStep==="nickname"?checkNickname:confirmAuth} disabled={authStep==="nickname"?!nicknameInput.trim():!passwordInput.trim()}
           style={{width:"100%",maxWidth:360,
-            background:nicknameInput.trim()?"linear-gradient(135deg,#6C63FF,#F4A261)":"#2A2940",
+            background:(authStep==="nickname"?nicknameInput.trim():passwordInput.trim())?"linear-gradient(135deg,#6C63FF,#F4A261)":"#2A2940",
             border:"none",borderRadius:14,padding:"15px",
-            color:nicknameInput.trim()?"white":"#4A4870",
-            cursor:nicknameInput.trim()?"pointer":"default",
+            color:(authStep==="nickname"?nicknameInput.trim():passwordInput.trim())?"white":"#4A4870",
+            cursor:(authStep==="nickname"?nicknameInput.trim():passwordInput.trim())?"pointer":"default",
             fontWeight:900,fontSize:15,
-            boxShadow:nicknameInput.trim()?"0 4px 20px #6C63FF44":"none",
+            boxShadow:(authStep==="nickname"?nicknameInput.trim():passwordInput.trim())?"0 4px 20px #6C63FF44":"none",
             transition:"all 0.2s"}}>
-          🎉 はじめる！
+          {authStep==="nickname"?"次へ →":authMode==="login"?"🔑 ログイン":"🎉 はじめる！"}
         </button>
       )}
     </div>
@@ -770,7 +806,7 @@ export default function App(){
               <div style={{color:"#6660A0",fontSize:9}}>行きたいをまとめよう</div>
             </div>
             <button onClick={()=>setShowSidebar(false)}
-              style={{background:"none",border:"none",color:"#4A4870",fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>
+              style={{background:"none",border:"none",color:"#4A4870",fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}} className="hamburger">
               ×
             </button>
           </div>
@@ -872,7 +908,7 @@ export default function App(){
         {/* ヘッダー */}
         <div style={{background:"white",borderBottom:"1px solid #EDE8E0",padding:"10px 12px",
           display:"flex",alignItems:"center",gap:8}}>
-          <button onClick={()=>setShowSidebar(true)}
+          <button onClick={()=>setShowSidebar(p=>!p)}
             style={{background:"none",border:"none",cursor:"pointer",padding:"4px 6px",
               borderRadius:8,color:"#555",fontSize:20,lineHeight:1,flexShrink:0}} className="hamburger">
             ☰
