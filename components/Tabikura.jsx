@@ -383,7 +383,7 @@ export default function App(){
   const [showDeleteConfirm,setShowDeleteConfirm]=useState(false);
   const [showInvite,setShowInvite]=useState(false);
   const [copiedLink,setCopiedLink]=useState(false);
-  const [showSidebar,setShowSidebar]=useState(false);
+  const [showSidebar,setShowSidebar]=useState(true);
   const [joinInvite,setJoinInvite]=useState(null);
   const [loaded,setLoaded]=useState(false);
 
@@ -744,7 +744,7 @@ export default function App(){
         ::-webkit-scrollbar{width:3px;}
         ::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
         button,input{font-family:inherit;}
-        .sidebar{width:220px;background:#18172B;display:flex;flex-direction:column;flex-shrink:0;transition:transform 0.25s ease;}
+        .sidebar{width:220px;background:#18172B;display:flex;flex-direction:column;flex-shrink:0;transition:all 0.25s ease;}
         .sidebar-overlay{display:none;}
         @media(min-width:641px){.hamburger{display:none !important;}.sidebar-toggle{display:flex;}}
         @media(max-width:640px){
@@ -760,7 +760,7 @@ export default function App(){
       {showSidebar&&<div className="sidebar-overlay" onClick={()=>setShowSidebar(false)}/>}
 
       {/* ── SIDEBAR ── */}
-      <div className={`sidebar${showSidebar?" open":""}`} style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div className={`sidebar${showSidebar?" open":""}`} style={{display:showSidebar?"flex":"none",flexDirection:"column",height:"100%"}}>
         <div style={{padding:"16px 14px",flex:1,overflowY:"auto",minHeight:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
             <div style={{width:32,height:32,borderRadius:10,background:"linear-gradient(135deg,#6C63FF,#F4A261)",
@@ -874,7 +874,7 @@ export default function App(){
           display:"flex",alignItems:"center",gap:8}}>
           <button onClick={()=>setShowSidebar(true)}
             style={{background:"none",border:"none",cursor:"pointer",padding:"4px 6px",
-              borderRadius:8,color:"#555",fontSize:20,lineHeight:1,flexShrink:0}} className="hamburger">
+              borderRadius:8,color:"#555",fontSize:20,lineHeight:1,flexShrink:0}}>
             ☰
           </button>
           <div style={{flex:1,minWidth:0}}>
