@@ -71,7 +71,7 @@ function ReactionBar({reactions,onReact,me}){
           ＋
         </button>
         {showPicker&&(
-          <div style={{position:"absolute",top:"calc(100% + 8px)",left:0,background:"white",
+          <div style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,background:"white",
             borderRadius:14,padding:12,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",zIndex:300,width:230}}>
             <div style={{fontSize:10,color:"#AAA",fontWeight:700,marginBottom:8,letterSpacing:1}}>よく使う絵文字</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>
@@ -281,7 +281,7 @@ function PostCard({post,gps,expanded,onExpand,onToggleDone,onReact,onAddComment,
       {expanded&&(
         <div style={{borderTop:"1px solid #F5F0E8",background:"#FAFAF8"}}>
           {post.comments.map(c=>(
-            <div key={c.id} style={{padding:"6px 14px 6px 20px",display:"flex",gap:8,borderLeft:"2px solid #E8E0D5",marginLeft:14,marginRight:14,marginBottom:4}}>
+            <div key={c.id} style={{padding:"10px 14px",display:"flex",gap:8}}>
               <Avt i={c.avatar} c={c.avatarColor} s={26}/>
               <div style={{flex:1,minWidth:0}}>
                 {editingComment===c.id?(
@@ -383,7 +383,7 @@ export default function App(){
   const [showDeleteConfirm,setShowDeleteConfirm]=useState(false);
   const [showInvite,setShowInvite]=useState(false);
   const [copiedLink,setCopiedLink]=useState(false);
-  const [showSidebar,setShowSidebar]=useState(true);
+  const [showSidebar,setShowSidebar]=useState(false);
   const [joinInvite,setJoinInvite]=useState(null);
   const [loaded,setLoaded]=useState(false);
 
@@ -744,9 +744,9 @@ export default function App(){
         ::-webkit-scrollbar{width:3px;}
         ::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
         button,input{font-family:inherit;}
-        .sidebar{width:220px;background:#18172B;display:flex;flex-direction:column;flex-shrink:0;transition:all 0.25s ease;}
+        .sidebar{width:220px;background:#18172B;display:flex;flex-direction:column;flex-shrink:0;transition:transform 0.25s ease;}
         .sidebar-overlay{display:none;}
-        @media(min-width:641px){.hamburger{display:none !important;}.sidebar-toggle{display:flex;}}
+        @media(min-width:641px){.hamburger{display:none !important;}}
         @media(max-width:640px){
           .sidebar{position:fixed;top:0;left:0;height:100vh;z-index:500;transform:translateX(-100%);}
           .sidebar.open{transform:translateX(0);}
@@ -760,7 +760,7 @@ export default function App(){
       {showSidebar&&<div className="sidebar-overlay" onClick={()=>setShowSidebar(false)}/>}
 
       {/* ── SIDEBAR ── */}
-      <div className={`sidebar${showSidebar?" open":""}`} style={{display:showSidebar?"flex":"none",flexDirection:"column",height:"100%"}}>
+      <div className={`sidebar${showSidebar?" open":""}`} style={{display:"flex",flexDirection:"column",height:"100%"}}>
         <div style={{padding:"16px 14px",flex:1,overflowY:"auto",minHeight:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
             <div style={{width:32,height:32,borderRadius:10,background:"linear-gradient(135deg,#6C63FF,#F4A261)",
@@ -770,7 +770,7 @@ export default function App(){
               <div style={{color:"#6660A0",fontSize:9}}>行きたいをまとめよう</div>
             </div>
             <button onClick={()=>setShowSidebar(false)}
-              style={{background:"none",border:"none",color:"#4A4870",fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}} className="hamburger">
+              style={{background:"none",border:"none",color:"#4A4870",fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 2px"}}>
               ×
             </button>
           </div>
@@ -872,9 +872,9 @@ export default function App(){
         {/* ヘッダー */}
         <div style={{background:"white",borderBottom:"1px solid #EDE8E0",padding:"10px 12px",
           display:"flex",alignItems:"center",gap:8}}>
-          <button onClick={()=>setShowSidebar(p=>!p)}
+          <button onClick={()=>setShowSidebar(true)}
             style={{background:"none",border:"none",cursor:"pointer",padding:"4px 6px",
-              borderRadius:8,color:"#555",fontSize:20,lineHeight:1,flexShrink:0}}>
+              borderRadius:8,color:"#555",fontSize:20,lineHeight:1,flexShrink:0}} className="hamburger">
             ☰
           </button>
           <div style={{flex:1,minWidth:0}}>
